@@ -1,0 +1,78 @@
+{
+  "name": "godiv",
+  "version": "0.1.0",
+  "description": "godiv — 상세페이지(네이버/쿠팡/와디즈) 다운로더 + 크롭 캔버스 Electron 앱",
+  "type": "module",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "app": "electron .",
+    "dev": "cross-env NODE_ENV=development electron .",
+    "build": "electron-builder",
+    "build:mac": "electron-builder --mac",
+    "build:win": "electron-builder --win",
+    "release:mac": "electron-builder --mac --publish=always",
+    "release:win": "electron-builder --win --publish=always"
+  },
+  "author": "bnam91",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bnam91/godiv.git"
+  },
+  "dependencies": {
+    "axios": "^1.7.9",
+    "gifuct-js": "^2.1.2",
+    "puppeteer-core": "^24.34.0"
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
+  },
+  "build": {
+    "appId": "com.bnam91.godiv",
+    "productName": "godiv",
+    "copyright": "© 2026 GOYA&MEDIA. All rights reserved.",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.mjs",
+      "config.js",
+      "renderer/**/*",
+      "electron/**/*",
+      "submodules/**/*",
+      "VERSION.txt",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.utilities",
+      "target": [
+        { "target": "dmg", "arch": ["x64", "arm64"] },
+        { "target": "zip", "arch": ["x64", "arm64"] }
+      ],
+      "icon": "assets/icons/icon.icns"
+    },
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64", "ia32"] },
+        { "target": "portable", "arch": ["x64"] }
+      ],
+      "icon": "assets/icons/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "bnam91",
+      "repo": "godiv",
+      "releaseType": "release"
+    }
+  }
+}

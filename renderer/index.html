@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: file:; style-src 'self' 'unsafe-inline'; script-src 'self';" />
+  <title>godiv</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">godiv</span>
+      <span id="app-version" class="version-chip">v0.1.0</span>
+    </div>
+    <div class="topbar-actions">
+      <span id="update-badge" class="update-badge hidden"></span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <!-- 좌측: 다운로드 컨트롤 -->
+    <section class="panel panel-left">
+      <div class="field">
+        <label for="url-input">상세페이지 URL</label>
+        <div class="url-row">
+          <input id="url-input" type="text" placeholder="네이버 / 쿠팡 / 와디즈 상품 URL 붙여넣기" autocomplete="off" />
+          <span id="platform-badge" class="platform-badge">—</span>
+        </div>
+      </div>
+
+      <!-- 네이버 키워드 검색 폴백 -->
+      <details id="keyword-fallback" class="keyword-box">
+        <summary>네이버가 막힐 때 · 키워드로 검색해서 선택</summary>
+        <div class="url-row">
+          <input id="keyword-input" type="text" placeholder="예: 햇빛가리개" autocomplete="off" />
+          <button id="keyword-search-btn" class="btn btn-sub">검색</button>
+        </div>
+        <ul id="keyword-results" class="keyword-results"></ul>
+      </details>
+
+      <div class="field">
+        <label>저장 위치</label>
+        <div class="save-root-row">
+          <input id="save-root" type="text" readonly />
+          <button id="pick-root-btn" class="btn btn-sub">변경</button>
+        </div>
+        <div class="field-inline">
+          <label for="folder-name">폴더명 <span class="hint">(비우면 상품명 자동)</span></label>
+          <input id="folder-name" type="text" placeholder="자동 결정" autocomplete="off" />
+        </div>
+      </div>
+
+      <button id="download-btn" class="btn btn-primary">상세페이지 다운로드</button>
+
+      <div class="progress-box">
+        <div id="progress-bar" class="progress-bar"><div id="progress-fill" class="progress-fill"></div></div>
+        <pre id="log" class="log"></pre>
+      </div>
+
+      <div class="upload-stubs">
+        <button id="to-goditor-btn" class="btn btn-ghost" title="MCP 연동 예정">고디터에 올리기</button>
+        <button id="to-figma-btn" class="btn btn-ghost" title="MCP 연동 예정">피그마에 올리기</button>
+      </div>
+    </section>
+
+    <!-- 우측: 캔버스 패널 -->
+    <section class="panel panel-right">
+      <div class="canvas-toolbar">
+        <span id="canvas-folder-label" class="folder-label">다운로드하면 이미지가 여기 나타납니다</span>
+        <div class="canvas-tools">
+          <button id="zoom-out-btn" class="btn btn-icon" title="축소">−</button>
+          <span id="zoom-level" class="zoom-level">100%</span>
+          <button id="zoom-in-btn" class="btn btn-icon" title="확대">+</button>
+          <button id="merge-btn" class="btn btn-sub" disabled>선택 합치기</button>
+          <button id="open-folder-btn" class="btn btn-sub">폴더 열기</button>
+        </div>
+      </div>
+      <div id="canvas-scroll" class="canvas-scroll">
+        <div id="canvas-stage" class="canvas-stage"></div>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <!-- GIF 프레임 뷰어 모달 (항목12) -->
+  <div id="gif-modal" class="modal hidden">
+    <div class="modal-body">
+      <div class="modal-head">
+        <span>GIF 프레임 선택</span>
+        <button id="gif-close" class="btn btn-icon">×</button>
+      </div>
+      <div id="gif-frame-preview" class="gif-frame-preview"></div>
+      <input id="gif-frame-slider" type="range" min="0" max="0" value="0" />
+      <div class="modal-actions">
+        <span id="gif-frame-label">0 / 0</span>
+        <button id="gif-export-btn" class="btn btn-primary">이 프레임 PNG 저장</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="js/renderer.js"></script>
+</body>
+</html>
