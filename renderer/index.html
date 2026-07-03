@@ -52,6 +52,18 @@
 
       <button id="download-btn" class="btn btn-primary">상세페이지 다운로드</button>
 
+      <details class="crawl-mode">
+        <summary>고급 · 봇차단이 심할 때 (CDP 모드)</summary>
+        <label class="cdp-row">
+          <input id="cdp-toggle" type="checkbox" />
+          <span>이미 로그인된 크롬에 붙어서 다운로드</span>
+        </label>
+        <div class="url-row">
+          <input id="cdp-port" type="text" placeholder="CDP 포트 (예: 9222)" autocomplete="off" />
+        </div>
+        <p class="hint cdp-help">로그인·거주지 세션이라 안티봇 통과율이 높습니다. 크롬을 <code>--remote-debugging-port=포트</code>로 띄운 뒤 포트를 입력하세요.</p>
+      </details>
+
       <div class="progress-box">
         <div id="progress-bar" class="progress-bar"><div id="progress-fill" class="progress-fill"></div></div>
         <pre id="log" class="log"></pre>

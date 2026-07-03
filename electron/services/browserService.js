@@ -115,6 +115,19 @@ async function findChromePath() {
  */
 let browserLaunchPromise = null; // 동시 IPC로 프로필이 이중 기동되지 않도록 하는 뮤텍스
 
+// 크롤 모드 옵션. 기본 'launch'(전용 프로필 새로 띄움).
+// 'cdp' = 이미 --remote-debugging-port로 떠 있는 실제 로그인 크롬에 puppeteer.connect.
+//   → 거주지 IP + 로그인 세션이라 안티봇 통과율이 높음(div_download 방식). 옵트인.
+let crawlOptions = { mode: 'launch', cdpPort: 0 };
+export function setCrawlOptions(opts) {
+  crawlOptions = { ...crawlOptions, ...(opts || {}) };
+  // 모드가 바뀌면 캐시된 브라우저는 버림(재연결 유도). connect 인스턴스는 disconnect만.
+  if (browserInstance) {
+    try { browserInstance.disconnect ? browserInstance.disconnect() : null; } catch {}
+    browserInstance = null;
+  }
+}
+
 async function getBrowser() {
   if (browserInstance && browserInstance.isConnected()) {
     return browserInstance;
@@ -124,12 +137,24 @@ async function getBrowser() {
 
   browserLaunchPromise = (async () => {
     try {
+      if (crawlOptions.mode === 'cdp' && crawlOptions.cdpPort) {
+        return await connectCdp(crawlOptions.cdpPort);
+      }
       return await launchBrowser();
     } finally {
       browserLaunchPromise = null;
     }
   })();
   return browserLaunchPromise;
+}
+
+// 이미 떠 있는 크롬(원격 디버깅 포트)에 attach. 그 크롬은 실제 로그인 프로필이어야 효과.
+async function connectCdp(port) {
+  const browserURL = `http://127.0.0.1:${port}`;
+  log('CDP attach:', browserURL);
+  browserInstance = await puppeteer.connect({ browserURL, defaultViewport: null });
+  browserInstance.on('disconnected', () => { browserInstance = null; });
+  return browserInstance;
 }
 
 async function launchBrowser() {
@@ -720,7 +745,12 @@ export async function naverKeywordSearch(keyword, sender) {
 export async function closeBrowser() {
   try {
     if (browserInstance) {
-      await browserInstance.close();
+      // CDP attach(유저 크롬)이면 disconnect만 — 남의 브라우저를 닫지 않는다.
+      if (crawlOptions.mode === 'cdp') {
+        browserInstance.disconnect ? browserInstance.disconnect() : null;
+      } else {
+        await browserInstance.close();
+      }
     }
   } catch (e) {
     log('closeBrowser 경고:', e.message);

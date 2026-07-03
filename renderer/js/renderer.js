@@ -89,6 +89,18 @@ async function init() {
   $('to-goditor-btn').addEventListener('click', () => toast('고디터 업로드 — MCP 연동 예정 (v2)'));
   $('to-figma-btn').addEventListener('click', () => toast('피그마 업로드 — MCP 연동 예정 (v2)'));
 
+  // CDP 모드 토글 (봇차단 우회 — 로그인된 실제 크롬에 attach)
+  if (settings.crawl?.mode === 'cdp') { $('cdp-toggle').checked = true; $('cdp-port').value = settings.crawl.cdpPort || ''; }
+  const applyCrawlMode = () => {
+    const on = $('cdp-toggle').checked;
+    const port = parseInt($('cdp-port').value.trim(), 10) || 0;
+    if (on && !port) { toast('CDP 포트를 입력하세요'); return; }
+    window.godiv.setCrawlMode(on ? { mode: 'cdp', cdpPort: port } : { mode: 'launch', cdpPort: 0 });
+    toast(on ? `CDP 모드 ON (포트 ${port})` : 'CDP 모드 OFF (전용 프로필)');
+  };
+  $('cdp-toggle').addEventListener('change', applyCrawlMode);
+  $('cdp-port').addEventListener('change', () => { if ($('cdp-toggle').checked) applyCrawlMode(); });
+
   // 진행 이벤트
   window.godiv.onDownloadProgress((data) => {
     if (data.message) log(data.message);

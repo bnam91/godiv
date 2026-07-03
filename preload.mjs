@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('godiv', {
   getAppInfo: () => ipcRenderer.invoke('get-app-info'),
   getSettings: () => ipcRenderer.invoke('get-settings'),
   saveSettings: (patch) => ipcRenderer.invoke('save-settings', patch),
+  setCrawlMode: (opts) => ipcRenderer.invoke('set-crawl-mode', opts),
 
   // 폴더 / 외부링크
   selectFolder: () => ipcRenderer.invoke('select-folder'),

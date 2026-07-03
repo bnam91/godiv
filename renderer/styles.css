@@ -156,6 +156,13 @@ input[readonly] { color: var(--text-dim); }
 .upload-stubs { display: flex; gap: 8px; }
 .upload-stubs .btn { flex: 1; }
 
+/* CDP 모드 (고급) */
+.crawl-mode { background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; }
+.crawl-mode summary { cursor: pointer; color: var(--text-dim); font-size: 12px; }
+.crawl-mode .cdp-row { display: flex; align-items: center; gap: 8px; margin: 8px 0; font-size: 12px; cursor: pointer; }
+.crawl-mode .cdp-help { margin: 6px 0 2px; }
+.crawl-mode code { background: #12141a; padding: 1px 5px; border-radius: 4px; font-size: 11px; }
+
 /* 캔버스 */
 .canvas-toolbar {
   height: 46px;

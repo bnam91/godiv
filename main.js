@@ -3,7 +3,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { readFileSync } from 'fs';
 import { loadSettings, saveSettings, DEFAULT_SAVE_ROOT } from './config.js';
-import { downloadDetail, naverKeywordSearch, closeBrowser } from './electron/services/browserService.js';
+import { downloadDetail, naverKeywordSearch, closeBrowser, setCrawlOptions } from './electron/services/browserService.js';
 import { listImages, saveImage, readImageAsDataUrl, deleteImage } from './electron/services/imageStore.js';
 import { detectPlatform } from './electron/services/platform.js';
 import { checkForUpdates } from './electron/services/updateService.js';
@@ -81,6 +81,19 @@ app.whenReady().then(() => {
 
   ipcMain.handle('get-settings', () => loadSettings());
   ipcMain.handle('save-settings', (e, patch) => saveSettings(patch));
+
+  // 크롤 모드 토글 (launch=전용프로필 새로띄움 / cdp=실제 로그인 크롬에 attach)
+  ipcMain.handle('set-crawl-mode', (e, opts) => {
+    setCrawlOptions(opts);
+    saveSettings({ crawl: opts });
+    return { success: true };
+  });
+
+  // 저장된 크롤 모드 적용 (앱 시작 시)
+  {
+    const s = loadSettings();
+    if (s.crawl) setCrawlOptions(s.crawl);
+  }
 
   ipcMain.handle('select-folder', async () => {
     const win = BrowserWindow.getFocusedWindow() || mainWindow;
