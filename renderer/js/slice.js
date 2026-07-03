@@ -91,6 +91,7 @@ export function enableSlice(item, controller) {
     const r = ratio;
     cleanup();
     try {
+      window.__godivToast?.('자르는 중…'); // 큰 이미지는 디코딩+저장에 잠시 걸림
       const { top, bottom } = await sliceHorizontal(item.dataUrl || item.imgEl.src, r);
       const stem = (item.name || 'img').replace(/\.[^.]+$/, '');
       const names = new Set(controller.items.map((i) => i.name));

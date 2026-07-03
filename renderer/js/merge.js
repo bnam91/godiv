@@ -62,6 +62,7 @@ export async function mergeItems(items, controller) {
   }
 
   try {
+    window.__godivToast?.(`합치는 중… (${items.length}장)`); // 세로 긴 이미지 다수면 잠시 걸림
     // 각 아이템 소스: GIF는 선택 프레임 우선, 그 외 원본
     const sources = items.map((it) => it.gifFrameDataUrl || it.dataUrl || it.imgEl.src);
     const imgs = await Promise.all(sources.map(loadImage));
