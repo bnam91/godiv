@@ -35,7 +35,11 @@ class ReleaseUpdater {
             const headers = {
                 'Accept': 'application/vnd.github.v3+json'
             };
-            
+            // 토큰이 있으면 rate limit 회피용으로만 사용(없어도 공개레포는 동작)
+            if (this.token) {
+                headers['Authorization'] = `Bearer ${this.token}`;
+            }
+
             const response = await axios.get(this.apiUrl, { headers });
             const releaseData = response.data;
             return {
@@ -43,7 +47,8 @@ class ReleaseUpdater {
                 name: releaseData.name,
                 published_at: releaseData.published_at,
                 body: releaseData.body,
-                assets: releaseData.assets
+                assets: releaseData.assets,
+                html_url: releaseData.html_url
             };
         } catch (error) {
             const repoLabel = this.isSubmoduleMode() 

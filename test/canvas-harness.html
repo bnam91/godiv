@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>canvas harness</title></head>
+<body>
+<div id="canvas-stage"></div><div id="canvas-scroll"></div><span id="canvas-folder-label"></span>
+<!-- gif modal DOM (gif.js 요구) -->
+<div id="gif-modal" class="hidden">
+  <div id="gif-frame-preview"></div>
+  <input id="gif-frame-slider" type="range" min="0" max="0" value="0">
+  <span id="gif-frame-label"></span>
+  <button id="gif-export-btn"></button>
+  <button id="gif-close"></button>
+</div>
+<script type="module">
+import { sliceHorizontalTest } from '../renderer/js/slice-testable.js';
+</script>
+</body></html>

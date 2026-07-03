@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="ko"><head><meta charset="UTF-8"><title>godiv canvas test</title></head>
+<body>
+  <!-- canvas.js / renderer 가 참조하는 DOM (index.html 구조 최소 복제) -->
+  <div id="canvas-scroll"><div id="canvas-stage"></div></div>
+  <span id="canvas-folder-label"></span>
+  <div id="toast"></div>
+  <div id="gif-modal" class="hidden">
+    <div id="gif-frame-preview"></div>
+    <input id="gif-frame-slider" type="range" min="0" max="0" value="0" />
+    <span id="gif-frame-label"></span>
+    <button id="gif-export-btn"></button>
+    <button id="gif-close"></button>
+  </div>
+
+  <script type="module">
+    import { createCanvasController } from '../renderer/js/canvas.js';
+    import { enableSlice } from '../renderer/js/slice.js';
+    import { mergeItems } from '../renderer/js/merge.js';
+    import { openGifViewer, isGifItem } from '../renderer/js/gif.js';
+
+    window.__godivToast = (m) => { window.__lastToast = m; console.log('[toast]', m); };
+
+    window.runCanvasTests = async (folderPath) => {
+      const results = {};
+      const stageEl = document.getElementById('canvas-stage');
+      const scrollEl = document.getElementById('canvas-scroll');
+      const folderLabelEl = document.getElementById('canvas-folder-label');
+      const controller = createCanvasController({ stageEl, scrollEl, folderLabelEl, onSelectionChange: () => {} });
+
+      // ── 항목9: 폴더 로드 (세로 나열) ──
+      await controller.loadFolder(folderPath);
+      results.load = { count: controller.items.length, names: controller.items.map(i => i.name) };
+      const gifItem = controller.items.find(i => isGifItem(i));
+      const jpgItems = controller.items.filter(i => !isGifItem(i));
+
+      // ── 항목12: GIF 프레임 뷰어 + 프레임 PNG 내보내기 ──
+      try {
+        await openGifViewer(gifItem, controller);
+        const slider = document.getElementById('gif-frame-slider');
+        const frameCount = Number(slider.max) + 1;
+        // 중간 프레임으로 이동
+        slider.value = String(Math.floor(frameCount / 2));
+        slider.dispatchEvent(new Event('input'));
+        await new Promise(r => setTimeout(r, 300));
+        // export 버튼 클릭 → 프레임 PNG 저장 + item.gifFrameDataUrl 설정
+        document.getElementById('gif-export-btn').click();
+        await new Promise(r => setTimeout(r, 800));
+        results.gif = { frameCount, exportedToast: window.__lastToast, hasFrameDataUrl: !!gifItem.gifFrameDataUrl };
+      } catch (e) {
+        results.gif = { error: e.message };
+      }
+
+      // 폴더 리로드로 gif 프레임 파일이 생겼는지 확인 (reload가 gif export 후 호출됨)
+      await controller.loadFolder(folderPath);
+      results.afterGifExport = controller.items.map(i => i.name);
+
+      // ── 항목10: 슬라이스 (jpg 1장) ──
+      try {
+        const target = controller.items.find(i => i.name === '01.jpg');
+        enableSlice(target, controller);
+        // mousemove로 ratio ~0.5 → click으로 확정
+        const el = target.el;
+        const rect = el.getBoundingClientRect();
+        el.dispatchEvent(new MouseEvent('mousemove', { clientX: rect.left + 10, clientY: rect.top + rect.height * 0.5, bubbles: true }));
+        await new Promise(r => setTimeout(r, 100));
+        el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        await new Promise(r => setTimeout(r, 900));
+        results.slice = { toast: window.__lastToast };
+      } catch (e) {
+        results.slice = { error: e.message };
+      }
+      await controller.loadFolder(folderPath);
+      results.afterSlice = controller.items.map(i => i.name);
+
+      // ── 항목11: 합치기 (jpg 2장 + gif 프레임 정지이미지) ──
+      try {
+        await controller.loadFolder(folderPath);
+        // 01.jpg, 02.jpg, 03.gif 선택
+        const pick = controller.items.filter(i => ['01.jpg','02.jpg','03.gif'].includes(i.name));
+        pick.forEach(i => { i.selected = true; });
+        await mergeItems(pick, controller);
+        await new Promise(r => setTimeout(r, 600));
+        results.merge = { toast: window.__lastToast, picked: pick.map(i=>i.name) };
+      } catch (e) {
+        results.merge = { error: e.message };
+      }
+      await controller.loadFolder(folderPath);
+      results.afterMerge = controller.items.map(i => i.name);
+
+      return results;
+    };
+  </script>
+</body></html>
