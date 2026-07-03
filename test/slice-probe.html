@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"></head><body>
+<div id="canvas-scroll"><div id="canvas-stage"></div></div><span id="canvas-folder-label"></span><div id="toast"></div>
+<div id="gif-modal" class="hidden"><div id="gif-frame-preview"></div><input id="gif-frame-slider" type="range"><span id="gif-frame-label"></span><button id="gif-export-btn"></button><button id="gif-close"></button></div>
+<script type="module">
+import { createCanvasController } from '../renderer/js/canvas.js';
+import { enableSlice } from '../renderer/js/slice.js';
+window.__godivToast=(m)=>{window.__lastToast=m; (window.__toasts=window.__toasts||[]).push(m);};
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+window.probeSlice=async(folder,name,waitMs)=>{
+  const c=createCanvasController({stageEl:document.getElementById('canvas-stage'),scrollEl:document.getElementById('canvas-scroll'),folderLabelEl:document.getElementById('canvas-folder-label'),onSelectionChange:()=>{}});
+  await c.loadFolder(folder);
+  window.__toasts=[];
+  const t=c.items.find(i=>i.name===name);
+  if(!t) return {err:'item없음'};
+  enableSlice(t,c);
+  const r=t.el.getBoundingClientRect();
+  t.el.dispatchEvent(new MouseEvent('mousemove',{clientX:r.left+5,clientY:r.top+Math.max(50,r.height*0.5),bubbles:true}));
+  await wait(100);
+  t.el.dispatchEvent(new MouseEvent('click',{bubbles:true}));
+  await wait(waitMs||2500);
+  await c.loadFolder(folder);
+  const stem=name.replace(/\.[^.]+$/,'');
+  const a=c.items.find(i=>i.name===stem+'_a.png'), b=c.items.find(i=>i.name===stem+'_b.png');
+  return {toasts:window.__toasts, rectH:r.height, produced:{a:!!a,b:!!b}, names:c.items.map(i=>i.name)};
+};
+</script></body></html>

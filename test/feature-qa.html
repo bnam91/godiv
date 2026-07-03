@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="ko"><head><meta charset="UTF-8"><title>godiv feature QA</title></head>
+<body>
+  <div id="canvas-scroll"><div id="canvas-stage"></div></div>
+  <span id="canvas-folder-label"></span><div id="toast"></div>
+  <div id="gif-modal" class="hidden">
+    <div id="gif-frame-preview"></div>
+    <input id="gif-frame-slider" type="range" min="0" max="0" value="0" />
+    <span id="gif-frame-label"></span><button id="gif-export-btn"></button><button id="gif-close"></button>
+  </div>
+  <script type="module">
+    import { createCanvasController } from '../renderer/js/canvas.js';
+    import { enableSlice } from '../renderer/js/slice.js';
+    import { mergeItems } from '../renderer/js/merge.js';
+    import { openGifViewer, isGifItem } from '../renderer/js/gif.js';
+    window.__godivToast = (m) => { window.__lastToast = m; };
+    const wait = (ms) => new Promise(r => setTimeout(r, ms));
+    const dim = (dataUrl) => new Promise(res => { const i=new Image(); i.onload=()=>res([i.naturalWidth,i.naturalHeight]); i.onerror=()=>res([0,0]); i.src=dataUrl; });
+
+    window.runFeatureQA = async (folderPath) => {
+      const F = [];  // findings/bugs
+      const P = {};  // pass records
+      const c = createCanvasController({
+        stageEl: document.getElementById('canvas-stage'),
+        scrollEl: document.getElementById('canvas-scroll'),
+        folderLabelEl: document.getElementById('canvas-folder-label'),
+        onSelectionChange: (sel) => { window.__mergeDisabled = sel.length < 2; },
+      });
+
+      // 1) 로드 & 정렬
+      await c.loadFolder(folderPath);
+      P.load = { count: c.items.length, order: c.items.map(i=>i.name) };
+      const expected = ['01.jpg','02.jpg','03.jpg','04.jpg','05.jpg','06.jpg','07.jpg','08.jpg','09.jpg','99.gif'];
+      if (JSON.stringify(P.load.order)!==JSON.stringify(expected)) F.push('로드 정렬 이상: '+P.load.order.join(','));
+
+      // 2) 줌 클램프
+      c.setZoom(5); const zmax=c.getZoom(); c.setZoom(0.01); const zmin=c.getZoom(); c.resetZoom(); const zr=c.getZoom();
+      P.zoom={max:zmax,min:zmin,reset:zr};
+      if (zmax!==3) F.push('줌 상한 클램프 실패: '+zmax);
+      if (zmin!==0.2) F.push('줌 하한 클램프 실패: '+zmin);
+      if (zr!==1) F.push('줌 리셋 실패: '+zr);
+
+      // 3) 선택: 단일→전체→해제, merge 버튼 활성상태
+      c.items[0].el.click();
+      const sel1 = c.getSelected().length;
+      c.selectAll(); const selAll=c.getSelected().length; const mergeOnAll=!window.__mergeDisabled;
+      c.clearSelection(); const selClr=c.getSelected().length; const mergeOnClr=!window.__mergeDisabled;
+      P.select={single:sel1, all:selAll, cleared:selClr, mergeEnabledOnAll:mergeOnAll, mergeEnabledOnClear:mergeOnClr};
+      if (selAll!==10) F.push('전체선택 실패: '+selAll);
+      if (selClr!==0) F.push('선택해제 실패: '+selClr);
+      if (!mergeOnAll) F.push('전체선택인데 merge 비활성');
+      if (mergeOnClr) F.push('선택0인데 merge 활성(버그)');
+
+      // 4) 슬라이스: 05.jpg(860x5806) 0.5 → a+b=원본높이
+      await c.loadFolder(folderPath);
+      const t5 = c.items.find(i=>i.name==='05.jpg');
+      enableSlice(t5, c);
+      const r = t5.el.getBoundingClientRect();
+      t5.el.dispatchEvent(new MouseEvent('mousemove',{clientX:r.left+5,clientY:r.top+r.height*0.5,bubbles:true}));
+      await wait(80);
+      t5.el.dispatchEvent(new MouseEvent('click',{bubbles:true}));
+      await wait(700);
+      await c.loadFolder(folderPath);
+      const a=c.items.find(i=>i.name==='05_a.png'), b=c.items.find(i=>i.name==='05_b.png');
+      if(a&&b){ const [,ah]=await dim(a.dataUrl); const [,bh]=await dim(b.dataUrl); P.slice={a_h:ah,b_h:bh,sum:ah+bh,orig:5806,ok:ah+bh===5806};
+        if(ah+bh!==5806) F.push(`슬라이스 높이합 불일치: ${ah}+${bh}=${ah+bh} ≠ 5806`);
+      } else F.push('슬라이스 결과파일(05_a/05_b.png) 없음');
+
+      // 5) 합치기: 02(780x1199)+04(1000x352) → 폭=1000, 높이=round(1199*1000/780)+352
+      await c.loadFolder(folderPath);
+      const m2=[c.items.find(i=>i.name==='02.jpg'), c.items.find(i=>i.name==='04.jpg')];
+      m2.forEach(i=>i.selected=true);
+      await mergeItems(m2, c); await wait(500);
+      await c.loadFolder(folderPath);
+      const merged=c.items.find(i=>i.name==='merged_01.png');
+      if(merged){ const [mw,mh]=await dim(merged.dataUrl); const expW=1000, expH=Math.round(1199*1000/780)+352;
+        P.merge2={w:mw,h:mh,expW,expH,ok:mw===expW&&mh===expH};
+        if(mw!==expW||mh!==expH) F.push(`합치기2 치수 불일치: ${mw}x${mh} ≠ ${expW}x${expH}`);
+      } else F.push('합치기2 결과(merged_01.png) 없음');
+
+      // 6) 대형 합치기: 전체(세로 매우 긴 것 포함) → 65535 이하면 단일, 초과면 분할
+      await c.loadFolder(folderPath);
+      const allImgs=c.items.filter(i=>!i.name.startsWith('merged_')&&!/_a\.png|_b\.png/.test(i.name));
+      allImgs.forEach(i=>i.selected=true);
+      await mergeItems(allImgs, c); await wait(900);
+      P.mergeBig={toast:window.__lastToast, picked:allImgs.length};
+      await c.loadFolder(folderPath);
+      const bigMerges=c.items.filter(i=>i.name.startsWith('merged_'));
+      P.mergeBig.files=bigMerges.map(i=>i.name);
+      // 각 분할 파일 높이 ≤ 65500 확인
+      for(const bm of bigMerges){ const [,h]=await dim(bm.dataUrl); if(h>65535) F.push(`합치기 분할 초과: ${bm.name} ${h}px`); }
+
+      // 7) GIF 프레임 뷰어 + export
+      await c.loadFolder(folderPath);
+      const g=c.items.find(i=>isGifItem(i));
+      await openGifViewer(g, c);
+      const sl=document.getElementById('gif-frame-slider'); const fc=Number(sl.max)+1;
+      sl.value=String(Math.floor(fc/2)); sl.dispatchEvent(new Event('input')); await wait(250);
+      document.getElementById('gif-export-btn').click(); await wait(700);
+      P.gif={frameCount:fc, toast:window.__lastToast};
+      await c.loadFolder(folderPath);
+      const gAfter=c.items.find(i=>i.name==='99.gif');
+      const frameFile=c.items.find(i=>/99_frame\d+\.png/.test(i.name));
+      P.gif.framePreserved=!!(gAfter&&gAfter.gifFrameDataUrl); P.gif.frameFile=frameFile?.name||null;
+      if(!frameFile) F.push('GIF 프레임 export 파일 없음');
+      if(!P.gif.framePreserved) F.push('GIF 선택프레임 reload후 미보존(합치기 dead code)');
+
+      // 8) 삭제
+      await c.loadFolder(folderPath);
+      const before=c.items.length;
+      const delTarget=c.items.find(i=>i.name==='01.jpg');
+      await c.deleteItem(delTarget); await wait(300);
+      P.delete={before, after:c.items.length, removed01:!c.items.find(i=>i.name==='01.jpg')};
+      if(c.items.length!==before-1||c.items.find(i=>i.name==='01.jpg')) F.push('삭제 실패');
+
+      // 9) 엣지: 1개만 선택하고 merge 호출 → 거부(파일 안 생김)
+      await c.loadFolder(folderPath);
+      const one=[c.items.find(i=>i.name==='02.jpg')];
+      const mergedBefore=c.items.filter(i=>i.name.startsWith('merged_')).length;
+      await mergeItems(one, c); await wait(300);
+      await c.loadFolder(folderPath);
+      const mergedAfter=c.items.filter(i=>i.name.startsWith('merged_')).length;
+      P.edgeMerge1={toast:window.__lastToast, newFile:mergedAfter>mergedBefore};
+      if(mergedAfter>mergedBefore) F.push('1개 선택 merge인데 파일 생성됨(버그)');
+
+      return { bugs:F, pass:P };
+    };
+  </script>
+</body></html>
