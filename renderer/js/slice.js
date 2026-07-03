@@ -66,6 +66,7 @@ export function enableSlice(item, controller) {
     line.style.top = `${ratio * 100}%`;
   };
 
+  let outsideTimer = null;
   const cleanup = () => {
     el.classList.remove('slice-mode');
     line.remove();
@@ -73,6 +74,7 @@ export function enableSlice(item, controller) {
     el.removeEventListener('click', onConfirm, true);
     document.removeEventListener('keydown', onKey);
     document.removeEventListener('mousedown', onOutside, true);
+    if (outsideTimer) { clearTimeout(outsideTimer); outsideTimer = null; }
     item._sliceActive = false;
   };
 
@@ -111,8 +113,12 @@ export function enableSlice(item, controller) {
   el.addEventListener('mousemove', onMove);
   el.addEventListener('click', onConfirm, true);
   document.addEventListener('keydown', onKey);
-  // 진입 유발 클릭과 충돌 방지 — 다음 tick에 바깥 클릭 감시 등록
-  setTimeout(() => document.addEventListener('mousedown', onOutside, true), 0);
+  // 진입 유발 클릭과 충돌 방지 — 다음 tick에 바깥 클릭 감시 등록.
+  // 빠르게 취소되면 cleanup에서 이 타이머를 취소해 리스너가 뒤늦게 붙지 않게 한다.
+  outsideTimer = setTimeout(() => {
+    outsideTimer = null;
+    if (item._sliceActive) document.addEventListener('mousedown', onOutside, true);
+  }, 0);
 
   window.__godivToast?.('가로 절단선을 옮긴 뒤 클릭해 자르세요 (Esc 취소)');
 }

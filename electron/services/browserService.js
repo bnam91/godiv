@@ -17,6 +17,7 @@ import { join } from 'path';
 import { homedir } from 'os';
 import { app } from 'electron';
 import { getExtractor } from './downloaders/index.js';
+import { allowRoot } from './imageStore.js';
 
 const execAsync = promisify(exec);
 
@@ -101,10 +102,26 @@ async function findChromePath() {
  * 전용 userDataDir(godiv-chrome-profile)로 네이버 세션 유지.
  * SingletonLock 충돌 시 stale lock 정리 후 1회 재시도.
  */
+let browserLaunchPromise = null; // 동시 IPC로 프로필이 이중 기동되지 않도록 하는 뮤텍스
+
 async function getBrowser() {
   if (browserInstance && browserInstance.isConnected()) {
     return browserInstance;
   }
+  // 이미 다른 호출이 기동 중이면 그 결과를 공유
+  if (browserLaunchPromise) return browserLaunchPromise;
+
+  browserLaunchPromise = (async () => {
+    try {
+      return await launchBrowser();
+    } finally {
+      browserLaunchPromise = null;
+    }
+  })();
+  return browserLaunchPromise;
+}
+
+async function launchBrowser() {
   browserInstance = null;
 
   const chromePath = await findChromePath();
@@ -218,29 +235,55 @@ function sanitizeFolderName(title, url) {
   return s;
 }
 
-/** 폴더명 충돌 방지: 이미 유효한 이름이면 그대로, 비면 상품ID. */
+/** 사용자가 넘긴 폴더명을 파일시스템 안전 단일 세그먼트로 정리(경로구분자/../ 제거). */
+function sanitizeUserFolderName(name) {
+  let s = String(name || '').trim();
+  // 경로구분자·상위이동·널·제어문자 제거
+  s = s.replace(/[\\/\0]/g, '_').replace(/\.\.+/g, '_').replace(/[\x00-\x1f]/g, '');
+  s = s.replace(/^\.+/, '').trim(); // 선행 점(숨김/현재/상위) 제거
+  if (s.length > 40) s = s.slice(0, 40);
+  return s;
+}
+
+/** 폴더명 충돌 방지: 사용자 지정이면 sanitize 후 사용, 비면 상품ID/타이틀 휴리스틱. */
 function resolveFolderName(folderName, title, url) {
   if (folderName && String(folderName).trim()) {
-    return String(folderName).trim();
+    const safe = sanitizeUserFolderName(folderName);
+    if (safe) return safe;
   }
   return sanitizeFolderName(title, url);
 }
 
-/** URL에서 저장 확장자 결정 — GIF는 원본 그대로. */
+const EXT_BY_CONTENT_TYPE = {
+  'image/gif': 'gif',
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+  'image/avif': 'avif',
+  'image/bmp': 'bmp',
+};
+
+/** URL pathname 기준 확장자(쿼리스트링 오염 방지). content-type이 우선. */
 function extFromUrl(url) {
-  const u = String(url || '').toLowerCase();
-  if (u.includes('.gif')) return 'gif';
-  if (u.includes('.png')) return 'png';
-  return 'jpg';
+  let pathname = String(url || '').toLowerCase();
+  try { pathname = new URL(url).pathname.toLowerCase(); } catch { /* 상대/불량 URL은 원문 사용 */ }
+  if (pathname.endsWith('.gif')) return 'gif';
+  if (pathname.endsWith('.png')) return 'png';
+  if (pathname.endsWith('.webp')) return 'webp';
+  if (pathname.endsWith('.avif')) return 'avif';
+  if (pathname.endsWith('.bmp')) return 'bmp';
+  if (pathname.endsWith('.jpeg') || pathname.endsWith('.jpg')) return 'jpg';
+  return null; // 판단 불가 → content-type에 위임
 }
 
-/** 단일 이미지 다운로드 → Buffer. 실패 시 throw. */
+/** 단일 이미지 다운로드 → { buf, ext }. content-type 검증(HTML 등 비이미지 거부). 실패 시 throw. */
 async function fetchImage(url, referer) {
-  const res = await axios.get(url, {
+  // 기본 에이전트로 먼저 시도, TLS 오류 시에만 느슨한 에이전트로 재시도(전역 비활성화 지양).
+  const doGet = (agent) => axios.get(url, {
     responseType: 'arraybuffer',
     timeout: 20000,
     maxRedirects: 5,
-    httpsAgent: insecureAgent,
+    ...(agent ? { httpsAgent: agent } : {}),
     headers: {
       'User-Agent': USER_AGENT,
       Referer: referer || '',
@@ -248,7 +291,24 @@ async function fetchImage(url, referer) {
     },
     validateStatus: (s) => s >= 200 && s < 400,
   });
-  return Buffer.from(res.data);
+
+  let res;
+  try {
+    res = await doGet(null);
+  } catch (e) {
+    const code = e && e.code;
+    const tlsIssue = /CERT|SSL|TLS|DEPTH_ZERO|SELF_SIGNED|UNABLE_TO_VERIFY/i.test(String(code) + ' ' + (e?.message || ''));
+    if (!tlsIssue) throw e;
+    res = await doGet(insecureAgent); // 자체서명 CDN(coupangcdn/pstatic 등) 폴백
+  }
+
+  const ct = String(res.headers?.['content-type'] || '').toLowerCase().split(';')[0].trim();
+  if (ct && !ct.startsWith('image/')) {
+    // Access Denied HTML 페이지 등 비이미지 응답을 이미지로 저장하지 않도록 거부
+    throw new Error(`비이미지 응답(content-type=${ct})`);
+  }
+  const ctExt = EXT_BY_CONTENT_TYPE[ct] || null;
+  return { buf: Buffer.from(res.data), ext: ctExt };
 }
 
 // ── 메인: 상세페이지 다운로드 ─────────────────────────────────────
@@ -300,6 +360,7 @@ export async function downloadDetail(opts, sender) {
     const root = saveRoot || join(homedir(), 'Downloads', 'div_download');
     const folderPath = join(root, resolvedFolder);
     await mkdir(folderPath, { recursive: true });
+    allowRoot(folderPath); // 이 폴더를 렌더러 읽기/쓰기 허용 루트로 등록(imageStore 보안)
     log(`저장 대상: ${folderPath} (${images.length}장)`);
 
     const files = [];
@@ -307,15 +368,16 @@ export async function downloadDetail(opts, sender) {
     for (let i = 0; i < total; i++) {
       const { url: imgUrl } = images[i];
       const seq = String(i + 1).padStart(2, '0');
-      const ext = extFromUrl(imgUrl);
-      const fileName = `${seq}.${ext}`;
       sendProgress(sender, {
         message: `이미지 저장 중 (${i + 1}/${total})`,
         current: i + 1,
         total,
       });
       try {
-        const buf = await fetchImage(imgUrl, url);
+        const { buf, ext: ctExt } = await fetchImage(imgUrl, url);
+        // content-type 우선, 없으면 URL pathname, 그래도 없으면 jpg
+        const ext = ctExt || extFromUrl(imgUrl) || 'jpg';
+        const fileName = `${seq}.${ext}`;
         await writeFile(join(folderPath, fileName), buf);
         files.push(fileName);
       } catch (imgErr) {

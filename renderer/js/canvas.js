@@ -7,6 +7,7 @@ export function createCanvasController({ stageEl, scrollEl, folderLabelEl, onSel
   let zoom = 1;
   let folderPath = '';
   let items = []; // { name, path, ext, isGif, el, imgEl, selected, gifFrameDataUrl? }
+  let loadToken = 0; // loadFolder 경합 방지 토큰
 
   function applyZoom() {
     stageEl.style.transform = `scale(${zoom})`;
@@ -69,19 +70,24 @@ export function createCanvasController({ stageEl, scrollEl, folderLabelEl, onSel
     get items() { return items; },
 
     async loadFolder(fp) {
+      // 로드 토큰: 겹쳐 호출되면 최신 로드만 stage에 반영(오래된 결과가 뒤늦게 append되지 않도록)
+      const token = ++loadToken;
       folderPath = fp;
       stageEl.innerHTML = '';
       items = [];
       folderLabelEl.textContent = fp;
       const res = await window.godiv.listFolderImages(fp);
+      if (token !== loadToken) return; // 더 새로운 로드가 시작됨 → 폐기
       if (!res.success) { folderLabelEl.textContent = `로드 실패: ${res.error}`; return; }
       for (const meta of res.images) {
         const durRes = await window.godiv.readImageDataUrl(meta.path);
+        if (token !== loadToken) return; // 도중에 새 로드 시작 → 중단
         if (!durRes.success) continue;
         const item = makeItem(meta, durRes.dataUrl);
         items.push(item);
         stageEl.appendChild(item.el);
       }
+      if (token !== loadToken) return;
       emitSelection();
     },
 

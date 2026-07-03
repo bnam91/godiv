@@ -103,6 +103,9 @@ async function init() {
   });
 
   updateBadge('');
+
+  // 테스트/자동화 훅 — 실제 앱 인스턴스에 붙는 내부 핸들(프로덕션 동작 영향 없음)
+  window.__godiv = { canvas, updateBadge, toast, $, get platform() { return currentPlatform; } };
 }
 
 function setZoomLabel(z) { $('zoom-level').textContent = `${Math.round(z * 100)}%`; }
@@ -153,13 +156,28 @@ async function onKeywordSearch() {
     if (!res.success) { ul.innerHTML = `<li>실패: ${res.error}</li>`; return; }
     ul.innerHTML = '';
     for (const item of res.items || []) {
+      // 원격 데이터는 textContent/검증된 src로만 삽입(innerHTML XSS 방지)
       const li = document.createElement('li');
-      li.innerHTML = `${item.thumbnail ? `<img src="${item.thumbnail}">` : ''}
-        <div class="kw-meta"><div>${item.title}</div>
-        <div class="kw-review">리뷰 ${item.reviewCount ?? '?'}</div></div>`;
+      if (item.thumbnail && /^https?:\/\//i.test(item.thumbnail)) {
+        const img = document.createElement('img');
+        img.src = item.thumbnail;
+        li.appendChild(img);
+      }
+      const meta = document.createElement('div');
+      meta.className = 'kw-meta';
+      const titleDiv = document.createElement('div');
+      titleDiv.textContent = item.title || '(제목 없음)';
+      const reviewDiv = document.createElement('div');
+      reviewDiv.className = 'kw-review';
+      reviewDiv.textContent = `리뷰 ${item.reviewCount ?? '?'}`;
+      meta.append(titleDiv, reviewDiv);
+      li.appendChild(meta);
+      // 유효한 http(s) URL만 선택 허용
+      const safeUrl = /^https?:\/\//i.test(item.url || '') ? item.url : '';
       li.addEventListener('click', () => {
-        $('url-input').value = item.url;
-        updateBadge(item.url);
+        if (!safeUrl) return toast('유효하지 않은 상품 URL');
+        $('url-input').value = safeUrl;
+        updateBadge(safeUrl);
         toast('URL 선택됨 — 다운로드 버튼을 누르세요');
       });
       ul.appendChild(li);

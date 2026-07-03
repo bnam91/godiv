@@ -111,7 +111,19 @@ export async function extractCoupang(page) {
     try {
       await autoScroll(frame).catch(() => {});
       const framed = await collectFrom(frame);
-      if (framed && framed.length) images = images.concat(framed);
+      if (framed && framed.length) {
+        // 프레임 내부 y는 프레임 로컬 좌표 → 메인 페이지에서의 iframe 위치를 더해 전역 좌표로 보정
+        let offsetY = 0;
+        try {
+          const handle = await frame.frameElement();
+          if (handle) {
+            const box = await handle.boundingBox();
+            if (box) offsetY = box.y + (await page.evaluate(() => window.scrollY));
+            await handle.dispose?.();
+          }
+        } catch { /* frameElement 미지원/접근불가 → 오프셋 0 */ }
+        images = images.concat(framed.map((it) => ({ ...it, y: (it.y || 0) + offsetY })));
+      }
       if (!title) title = await readTitle(frame).catch(() => '');
     } catch {
       // cross-origin 등으로 접근 불가한 프레임은 건너뛴다.

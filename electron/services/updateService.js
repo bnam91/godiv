@@ -3,9 +3,29 @@
 //  → 새 버전이면 렌더러에 update-status 전송(뱃지) + 소스실행 시 dialog로 git 업데이트 확인.
 //  ⚠️ 같은 버전이면 절대 git reset 하지 않는다.
 import { dialog, app } from 'electron';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+import { existsSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 import dotenv from 'dotenv';
 import ReleaseUpdater from '../../submodules/module_update_auto/release_updater.js';
 import updateConfig from '../../submodules/module_update_auto/config.js';
+
+const execAsync = promisify(exec);
+const projectRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+
+// git 저장소이며 워킹트리가 깨끗한지 확인(더티면 git reset로 로컬 변경 유실 → 거부).
+async function isGitCleanSourceCheckout() {
+  try {
+    if (!existsSync(join(projectRoot, '.git'))) return { ok: false, reason: 'git 저장소 아님' };
+    const { stdout } = await execAsync('git status --porcelain', { cwd: projectRoot });
+    if (stdout.trim()) return { ok: false, reason: '로컬 변경사항 있음(더티 워킹트리)' };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, reason: `git 확인 실패: ${e.message}` };
+  }
+}
 
 // 통합 API 키 파일에서 GITHUB_TOKEN을 optional로 로드(없어도 공개레포라 동작).
 // 토큰은 코드에 하드코딩하지 않고 env에서만 읽는다.
@@ -52,9 +72,28 @@ export async function checkForUpdates(win, packageJson, { isDev, isPackaged, man
       return { success: true, current, latest: latest.tag_name, hasUpdate: false };
     }
 
-    // 새 버전 감지: 소스 실행(npm run app)일 때 git 기반 자동업데이트 진행.
-    // isPackaged여도 godiv는 현재 소스실행 위주라 동일 경로를 태우되,
-    // git 저장소가 아니면 performUpdate가 내부에서 안전하게 실패(캐치)한다.
+    // git 기반 업데이트는 소스 실행(!isPackaged) + 깨끗한 git 체크아웃에서만 허용.
+    // 패키징 앱이거나 더티/비-git이면 git reset로 로컬을 날리지 않고 릴리스 링크 안내만.
+    if (isPackaged) {
+      console.log('[update] 패키징 앱 — git 자동업데이트 스킵, 릴리스 링크 안내만.');
+      return { success: true, current, latest: latest.tag_name, hasUpdate: true, updated: false, reason: 'packaged' };
+    }
+    const clean = await isGitCleanSourceCheckout();
+    if (!clean.ok) {
+      console.log(`[update] git 업데이트 불가(${clean.reason}) — 릴리스 링크 안내만.`);
+      if (manual) {
+        await dialog.showMessageBox(win, {
+          type: 'info',
+          title: '수동 업데이트 필요',
+          message: `새 버전 ${latest.tag_name} 이 있습니다.`,
+          detail: `자동 업데이트를 적용할 수 없습니다(${clean.reason}).\n릴리스 페이지에서 직접 받아주세요.`,
+          buttons: ['확인'],
+        });
+      }
+      return { success: true, current, latest: latest.tag_name, hasUpdate: true, updated: false, reason: clean.reason };
+    }
+
+    // 새 버전 감지 + 소스 실행 + 깨끗한 체크아웃 → git 기반 자동업데이트 진행.
     const { response } = await dialog.showMessageBox(win, {
       type: 'info',
       title: '업데이트 알림',

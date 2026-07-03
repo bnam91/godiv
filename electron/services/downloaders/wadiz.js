@@ -128,7 +128,19 @@ export async function extractWadiz(page) {
     try {
       await autoScroll(frame).catch(() => {});
       const framed = await collectFrom(frame, DETAIL_IMG_SELECTOR);
-      if (framed && framed.length) images = images.concat(framed);
+      if (framed && framed.length) {
+        // 프레임 로컬 y → 메인 페이지 전역 y로 보정(iframe 위치 오프셋 추가)
+        let offsetY = 0;
+        try {
+          const handle = await frame.frameElement();
+          if (handle) {
+            const box = await handle.boundingBox();
+            if (box) offsetY = box.y + (await page.evaluate(() => window.scrollY));
+            await handle.dispose?.();
+          }
+        } catch { /* 미지원/접근불가 → 오프셋 0 */ }
+        images = images.concat(framed.map((it) => ({ ...it, y: (it.y || 0) + offsetY })));
+      }
       if (!title) title = await readTitle(frame).catch(() => '');
     } catch {
       // cross-origin 등으로 접근 불가한 프레임은 건너뛴다.
