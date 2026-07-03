@@ -47,6 +47,7 @@
   ③ CDN 다운로드+디스크 저장 = ✅ 실제 pstatic 이미지(shopping-phinf.pstatic.net, 300×300 image/jpeg)를 이 환경에서 다운로드→01.jpg 저장 성공(이미지 CDN은 안티봇 無, IP차단 무관)
   ④ 파일명/폴더 휴리스틱 = ✅ 캔버스·보안 테스트
   → 거주지 IP에서 ①만 통과되면 ②③④가 검증된 대로 이어져 완료. 코드 측 미완 0.
+- **모든 네트워크 벡터 소진 확인(2026-07-04)**: ① puppeteer 브라우저 네비게이션 = 차단(네이버 시스템오류/쿠팡·와디즈 Access Denied), ② raw HTTP(axios/node TLS) 직접 fetch = 차단(네이버 status 490 봇차단, 583바이트). 브라우저·raw HTTP 양쪽 모두 IP레벨 차단 → 이 데이터센터 IP에서 스토어 접근 수단이 전무함이 최종 확인. 완료는 거주지 IP 필수(finish-live-test.sh 원클릭 헬퍼 제공).
 
 ## 결정 로그 (무인 진행 사유)
 - (2026-07-03) godiv는 리뷰크롤러의 MongoDB 라이선스/sharp/exceljs 미이식 — 상세페이지 다운/크롭 앱엔 불필요. 이미지 저장은 main의 fs, 슬라이스/합치기는 renderer canvas, GIF는 gifuct-js.
