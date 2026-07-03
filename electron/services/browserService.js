@@ -7,7 +7,9 @@
 //   closeBrowser() → 크롬/puppeteer 정리
 // 진행상황: sender.send('download-progress', { message, current?, total? })
 
-import puppeteer from 'puppeteer-core';
+import puppeteerCore from 'puppeteer-core';
+import { addExtra } from 'puppeteer-extra';
+import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import axios from 'axios';
 import https from 'https';
 import { exec } from 'child_process';
@@ -18,6 +20,15 @@ import { homedir } from 'os';
 import { app } from 'electron';
 import { getExtractor } from './downloaders/index.js';
 import { allowRoot } from './imageStore.js';
+
+// puppeteer-core를 puppeteer-extra로 감싸 stealth(webdriver/plugins/webgl/chrome 등 탐지 회피) 적용.
+// 시스템 크롬 headful에도 동작하며, 봇차단(Akamai/네이버) 통과율을 높인다.
+const puppeteer = addExtra(puppeteerCore);
+try {
+  puppeteer.use(StealthPlugin());
+} catch (e) {
+  console.log('[browserService] stealth 플러그인 로드 경고:', e.message);
+}
 
 const execAsync = promisify(exec);
 
