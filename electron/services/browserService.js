@@ -311,6 +311,116 @@ async function fetchImage(url, referer) {
   return { buf: Buffer.from(res.data), ext: ctExt };
 }
 
+// ── 봇차단 회피 유틸 ─────────────────────────────────────────────
+
+// 자동화 탐지 신호를 줄이는 스텔스 스크립트(navigator.webdriver 등).
+async function applyStealth(page) {
+  try {
+    await page.evaluateOnNewDocument(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+      Object.defineProperty(navigator, 'languages', { get: () => ['ko-KR', 'ko', 'en-US', 'en'] });
+      Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+      // chrome 런타임 객체 흉내
+      window.chrome = window.chrome || { runtime: {} };
+      const orig = navigator.permissions && navigator.permissions.query;
+      if (orig) {
+        navigator.permissions.query = (p) =>
+          p && p.name === 'notifications'
+            ? Promise.resolve({ state: Notification.permission })
+            : orig(p);
+      }
+    });
+    await page.setExtraHTTPHeaders({ 'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7' });
+  } catch (e) {
+    log('스텔스 적용 경고:', e.message);
+  }
+}
+
+// 플랫폼 홈을 먼저 방문해 세션/쿠키를 데운다.
+async function warmup(page, platform, force = false) {
+  const homes = {
+    coupang: 'https://www.coupang.com/',
+    naver: 'https://smartstore.naver.com/',
+    wadiz: 'https://www.wadiz.kr/',
+  };
+  const home = homes[platform];
+  if (!home) return;
+  await page.goto(home, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {});
+  // 사람스러운 짧은 체류 + 스크롤
+  await new Promise((r) => setTimeout(r, force ? 3500 : 2000));
+  await page.evaluate(() => window.scrollBy(0, 400)).catch(() => {});
+  await new Promise((r) => setTimeout(r, 800));
+}
+
+// 네이버 상품 상세 진입 (★검색→클릭 방식).
+// 네이버 스마트스토어는 상세 딥링크 '직접 goto'를 소프트 차단("시스템오류/접속 불가")한다.
+// 반면 통합검색(nexearch) 결과의 NaPm 트래킹 앵커를 '실제 클릭'하면 정상 로드된다.
+// → keyword 힌트가 있으면 검색결과에서 해당 productId 앵커를 찾아 클릭한다.
+// 반환: 성공 시 true(page가 상품 상세로 전환됨), 진입 불가 시 false.
+async function navigateNaverViaSearch(page, keyword, productId) {
+  if (!keyword || !productId) return false;
+  try {
+    await page.goto('https://www.naver.com/', { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+    await new Promise((r) => setTimeout(r, 1500));
+    const searchUrl = `https://search.naver.com/search.naver?where=nexearch&query=${encodeURIComponent(keyword)}`;
+    await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch((e) => log('naver 검색 goto 경고:', e.message));
+    await new Promise((r) => setTimeout(r, 2000));
+    // lazy 렌더 유도(쇼핑섹션 상품 앵커 노출)
+    await page.evaluate(async () => {
+      for (let y = 0; y < 6000; y += 700) { window.scrollTo(0, y); await new Promise((r) => setTimeout(r, 250)); }
+      window.scrollTo(0, 0);
+    }).catch(() => {});
+    await new Promise((r) => setTimeout(r, 1000));
+
+    // 대상 productId 앵커를 찾아 같은 탭에서 클릭(NaPm 트래킹 체인으로 정상 진입).
+    const clicked = await page.evaluate((pid) => {
+      const anchors = Array.from(document.querySelectorAll('a[href]'))
+        .filter((a) => new RegExp('/products/' + pid + '(?:[/?#]|$)').test(a.href));
+      // 네이버 자체 스토어 우선(스마트스토어/브랜드/main 트래킹)
+      const target = anchors.find((a) => /naver\.com\/(main|[^/]+)\/products\//.test(a.href)) || anchors[0];
+      if (!target) return false;
+      target.setAttribute('target', '_self');
+      target.scrollIntoView();
+      target.click();
+      return true;
+    }, String(productId));
+    if (!clicked) { log('검색결과에서 productId 앵커 없음:', productId); return false; }
+
+    await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 50000 }).catch((e) => log('naver 클릭 네비 경고:', e.message));
+    await new Promise((r) => setTimeout(r, 2500));
+    return true;
+  } catch (e) {
+    log('navigateNaverViaSearch 오류:', e.message);
+    return false;
+  }
+}
+
+// Access Denied / 봇차단 페이지 여부 감지.
+async function isBlockedPage(page) {
+  try {
+    const info = await page.evaluate(() => ({
+      title: document.title || '',
+      bodyLen: (document.body && document.body.innerText || '').length,
+      text: (document.body && document.body.innerText || '').slice(0, 400),
+    }));
+    const hay = (info.title + ' ' + info.text).toLowerCase();
+    const blockedSignals = [
+      'access denied', 'reference #', 'akamai', 'forbidden',
+      '접근이 거부', '비정상적인 접근', 'unusual traffic', 'are you a human',
+      'captcha', 'blocked', 'error 403',
+      // 네이버 스마트스토어 소프트 봇차단/레이트리밋 페이지
+      '접속이 불가', '시스템오류', '시스템 오류', '에러페이지',
+      '동시에 접속하는 이용자', '일시적으로 제한', '서비스 접속이 일시적',
+    ];
+    if (blockedSignals.some((s) => hay.includes(s))) return true;
+    // 본문이 사실상 비어있고 타이틀도 의심스러우면 차단으로 간주
+    if (info.bodyLen < 30 && /denied|error|block/.test(hay)) return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 // ── 메인: 상세페이지 다운로드 ─────────────────────────────────────
 
 export async function downloadDetail(opts, sender) {
@@ -330,17 +440,78 @@ export async function downloadDetail(opts, sender) {
     const browser = await getBrowser();
     page = await browser.newPage();
     await page.setUserAgent(USER_AGENT);
+    await applyStealth(page);
 
-    sendProgress(sender, { message: '페이지 여는 중…' });
-    log('goto:', url);
-    // 네이버 등은 무거운 SPA — 타임아웃 나도 페이지가 열려 있으면 계속 진행.
-    try {
-      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
-    } catch (navErr) {
-      log('goto 타임아웃/경고(계속 진행):', navErr.message);
+    // 네이버는 상세 딥링크 직접 goto를 소프트 차단하므로, 검색→클릭 진입을 우선 시도한다.
+    // keyword 힌트는 URL 프래그먼트(#godiv-kw=)로 전달됨(naverKeywordSearch가 부착).
+    let navUrl = url;
+    let usedNaverSearch = false;
+    if (platform === 'naver') {
+      let keywordHint = '';
+      try {
+        const u = new URL(url);
+        if (u.hash) {
+          const m = u.hash.match(/godiv-kw=([^&]+)/);
+          if (m) keywordHint = decodeURIComponent(m[1]);
+        }
+        navUrl = u.origin + u.pathname + u.search; // 다운로드/폴더명 판단용 정규 URL
+      } catch {}
+      const productId = extractProductId(navUrl);
+      if (keywordHint && productId) {
+        sendProgress(sender, { message: '네이버 검색으로 진입 중…' });
+        log('naver 검색→클릭 진입:', keywordHint, productId);
+        usedNaverSearch = await navigateNaverViaSearch(page, keywordHint, productId);
+      }
     }
-    // 렌더 안정화 짧은 대기
-    await new Promise((r) => setTimeout(r, 1500));
+
+    if (!usedNaverSearch) {
+      // 웜업: 상세 딥링크 직접 접근은 Akamai/봇차단에 걸리기 쉬움 → 홈을 먼저 방문해
+      // 세션/쿠키를 데운 뒤 상세로 이동(영구 프로필이라 다음부터는 더 잘 통과).
+      sendProgress(sender, { message: '세션 준비 중…' });
+      await warmup(page, platform).catch((e) => log('웜업 경고(계속):', e.message));
+
+      sendProgress(sender, { message: '페이지 여는 중…' });
+      log('goto:', navUrl);
+      // 네이버 등은 무거운 SPA — 타임아웃 나도 페이지가 열려 있으면 계속 진행.
+      try {
+        await page.goto(navUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      } catch (navErr) {
+        log('goto 타임아웃/경고(계속 진행):', navErr.message);
+      }
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+
+    // 봇차단(Access Denied/네이버 시스템오류 등) 감지 → 재시도.
+    if (await isBlockedPage(page)) {
+      const blockText = await page.evaluate(() => ({
+        title: document.title || '',
+        text: (document.body && document.body.innerText || '').slice(0, 200),
+      })).catch(() => ({ title: '', text: '' }));
+      log('봇차단 감지 — 재시도:', blockText.title);
+      sendProgress(sender, { message: '차단 감지 — 재시도 중…' });
+      await new Promise((r) => setTimeout(r, 3000));
+      // 네이버는 재웜업 goto가 아니라 검색→클릭을 다시 시도(직접 goto는 계속 차단됨).
+      let recovered = false;
+      if (usedNaverSearch) {
+        const productId = extractProductId(navUrl);
+        const kwRetry = (() => { try { const m = new URL(url).hash.match(/godiv-kw=([^&]+)/); return m ? decodeURIComponent(m[1]) : ''; } catch { return ''; } })();
+        if (kwRetry && productId) recovered = await navigateNaverViaSearch(page, kwRetry, productId);
+      } else {
+        await warmup(page, platform, true).catch(() => {});
+        await new Promise((r) => setTimeout(r, 2000));
+        try { await page.goto(navUrl, { waitUntil: 'domcontentloaded', timeout: 60000 }); recovered = true; } catch {}
+      }
+      await new Promise((r) => setTimeout(r, 1500));
+      if (!recovered || await isBlockedPage(page)) {
+        return {
+          success: false,
+          blocked: true,
+          blockTitle: blockText.title,
+          blockText: blockText.text,
+          error: `사이트가 자동 접근을 차단했습니다(${blockText.title || 'Access Denied'}). 열린 크롬 창에서 직접 로그인/캡차를 통과한 뒤 다시 시도하거나, 잠시 후(IP 쿨다운) 재시도해주세요.`,
+        };
+      }
+    }
 
     sendProgress(sender, { message: '이미지 추출 중…' });
     const extracted = await extractor(page);
@@ -356,7 +527,7 @@ export async function downloadDetail(opts, sender) {
       return { success: false, error: '추출된 이미지가 없습니다.', title };
     }
 
-    const resolvedFolder = resolveFolderName(folderName, title, url);
+    const resolvedFolder = resolveFolderName(folderName, title, navUrl);
     const root = saveRoot || join(homedir(), 'Downloads', 'div_download');
     const folderPath = join(root, resolvedFolder);
     await mkdir(folderPath, { recursive: true });
@@ -374,7 +545,7 @@ export async function downloadDetail(opts, sender) {
         total,
       });
       try {
-        const { buf, ext: ctExt } = await fetchImage(imgUrl, url);
+        const { buf, ext: ctExt } = await fetchImage(imgUrl, navUrl);
         // content-type 우선, 없으면 URL pathname, 그래도 없으면 jpg
         const ext = ctExt || extFromUrl(imgUrl) || 'jpg';
         const fileName = `${seq}.${ext}`;
@@ -423,27 +594,35 @@ export async function naverKeywordSearch(keyword, sender) {
     const browser = await getBrowser();
     page = await browser.newPage();
     await page.setUserAgent(USER_AGENT);
+    await applyStealth(page);
 
-    const searchUrl = `https://search.shopping.naver.com/search/all?query=${encodeURIComponent(keyword)}`;
+    // 네이버 홈을 먼저 방문해 세션/쿠키를 데운다(딥링크 직접 접근 시 봇차단 완화).
+    await page.goto('https://www.naver.com/', { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+    await new Promise((r) => setTimeout(r, 1500));
+
+    // ★ search.shopping.naver.com / msearch 는 IP 기반 봇차단("쇼핑 서비스 접속이
+    //   일시적으로 제한되었습니다")에 매우 취약 → 통합검색(nexearch) 쇼핑섹션을 사용한다.
+    //   통합검색 결과에는 네이버 자체 스토어(smartstore/brand) 상품 딥링크가 노출됨.
+    const searchUrl = `https://search.naver.com/search.naver?where=nexearch&query=${encodeURIComponent(keyword)}`;
     try {
       await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
     } catch (navErr) {
       log('naver 검색 goto 경고(계속):', navErr.message);
     }
     // lazy 렌더 유도
-    await new Promise((r) => setTimeout(r, 1500));
+    await new Promise((r) => setTimeout(r, 2000));
     try {
       await page.evaluate(async () => {
-        for (let y = 0; y < 3000; y += 800) {
+        for (let y = 0; y < 6000; y += 700) {
           window.scrollTo(0, y);
-          await new Promise((r) => setTimeout(r, 200));
+          await new Promise((r) => setTimeout(r, 250));
         }
         window.scrollTo(0, 0);
       });
     } catch {}
-    await new Promise((r) => setTimeout(r, 800));
+    await new Promise((r) => setTimeout(r, 1000));
 
-    // 봇 차단·구조 변경에 대비해 여러 셀렉터 후보를 순차 시도
+    // 통합검색 쇼핑섹션에서 '네이버 자체 스토어' 상품 카드만 채집.
     const items = await page.evaluate(() => {
       const out = [];
       const seen = new Set();
@@ -454,61 +633,52 @@ export async function naverKeywordSearch(keyword, sender) {
         return m ? parseInt(m[1], 10) : 0;
       };
 
-      // 상품 카드 컨테이너 후보들
-      const cardSelectors = [
-        'div[class*="product_item"]',
-        'div[class*="basicList_item"]',
-        'li[class*="list_item"]',
-        'div[class*="adProduct_item"]',
-        'div[data-shp-area-type]',
-      ];
-      let cards = [];
-      for (const sel of cardSelectors) {
-        const found = Array.from(document.querySelectorAll(sel));
-        if (found.length) { cards = found; break; }
-      }
-      // 폴백: 상품 링크 기준으로 조상 카드 추정
-      if (!cards.length) {
-        const links = Array.from(
-          document.querySelectorAll('a[href*="/catalog/"], a[href*="smartstore.naver.com"], a[href*="/products/"]')
-        );
-        cards = links.map((a) => a.closest('li, div')).filter(Boolean);
-      }
+      // 네이버 자체 스토어 상품 딥링크만(외부몰 11번가/G마켓 등 제외). platform=naver 다운로드 대상.
+      const isNaverProduct = (href) =>
+        /(smartstore|brand)\.naver\.com\/[^?#]*\/products\/\d+/.test(href) ||
+        /shopping\.naver\.com\/[^?#]*\/products\/\d+/.test(href);
 
-      for (const card of cards) {
+      const anchors = Array.from(document.querySelectorAll('a[href]'))
+        .filter((a) => isNaverProduct(a.href));
+
+      for (const a of anchors) {
         if (out.length >= 10) break;
 
-        const linkEl = card.querySelector(
-          'a[href*="/catalog/"], a[href*="smartstore.naver.com"], a[href*="brand.naver.com"], a[href*="/products/"], a[href^="http"]'
-        );
-        const url = linkEl && linkEl.href;
+        // 쿼리스트링(nl-query 등) 제거한 정규 상품 URL
+        let url = a.href;
+        try { const u = new URL(a.href); url = u.origin + u.pathname; } catch {}
         if (!url || seen.has(url)) continue;
 
-        // 제목 후보
-        let title = '';
-        const titleEl = card.querySelector(
-          '[class*="title"], [class*="name"], a[title]'
-        );
-        if (titleEl) {
-          title = (titleEl.getAttribute('title') || titleEl.textContent || '').trim();
+        // 카드 조상: img + 충분한 텍스트가 있는 가장 가까운 컨테이너
+        let card = null, el = a;
+        for (let i = 0; i < 6 && el; i++) {
+          el = el.parentElement;
+          if (el && el.querySelector('img') && (el.innerText || '').length > 10) { card = el; break; }
         }
-        if (!title && linkEl) title = (linkEl.getAttribute('title') || linkEl.textContent || '').trim();
+        if (!card) card = a.closest('li, div') || a.parentElement;
+        if (!card) continue;
+
+        const imgEl = card.querySelector('img');
+
+        // 제목: img[alt] → a[title]/텍스트 → 카드 첫 줄(가격/평점 라인 제외)
+        let title = '';
+        if (imgEl) title = (imgEl.getAttribute('alt') || '').trim();
+        if (!title) title = (a.getAttribute('title') || a.textContent || '').trim();
+        if (!title) {
+          const lines = (card.innerText || '').split('\n').map((s) => s.trim()).filter(Boolean);
+          title = lines.find((l) => l.length > 6 && !/^[\d,.\s%원]+$/.test(l) && !/^\(\d/.test(l)) || '';
+        }
         if (!title) continue;
 
         // 썸네일
-        const imgEl = card.querySelector('img');
-        const thumbnail = imgEl
-          ? (imgEl.src || imgEl.getAttribute('data-src') || '')
-          : '';
+        const thumbnail = imgEl ? (imgEl.getAttribute('src') || imgEl.getAttribute('data-src') || '') : '';
 
-        // 리뷰 수
+        // 리뷰 수: "리뷰 1,234" / "리뷰수: 363" / "(456)" 형태
         let reviewCount = 0;
-        const reviewEl = card.querySelector('[class*="review"], [class*="Review"]');
-        if (reviewEl) reviewCount = toNum(reviewEl.textContent);
-        if (!reviewCount) {
-          const m = (card.textContent || '').match(/리뷰\s*([\d,]+)/);
-          if (m) reviewCount = toNum(m[1]);
-        }
+        const txt = card.innerText || '';
+        let m = txt.match(/리뷰\s*수?\s*:?\s*([\d,]+)/);
+        if (!m) m = txt.match(/\(([\d,]{1,9})\)/);
+        if (m) reviewCount = toNum(m[1]);
 
         seen.add(url);
         out.push({ title: title.slice(0, 120), reviewCount, thumbnail, url });
@@ -516,8 +686,13 @@ export async function naverKeywordSearch(keyword, sender) {
       return out;
     });
 
+    // 다운로드 시 '검색→클릭' 진입에 쓸 키워드를 URL 프래그먼트로 부착(#godiv-kw=).
+    // 프래그먼트는 서버로 전송되지 않아 무해하며, 플랫폼 판별(호스트명)에도 영향 없음.
+    const kwFrag = `#godiv-kw=${encodeURIComponent(keyword)}`;
+    const itemsWithKw = items.map((it) => ({ ...it, url: it.url + kwFrag }));
+
     sendProgress(sender, { message: `검색 완료: ${items.length}건` });
-    return { success: true, items };
+    return { success: true, items: itemsWithKw };
   } catch (err) {
     log('naverKeywordSearch 오류:', err);
     // 부분 실패 허용 — 빈 목록으로 반환
