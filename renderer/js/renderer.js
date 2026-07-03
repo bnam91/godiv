@@ -77,6 +77,9 @@ async function init() {
   // 캔버스 툴
   $('zoom-in-btn').addEventListener('click', () => setZoomLabel(canvas.setZoom(canvas.getZoom() + 0.1)));
   $('zoom-out-btn').addEventListener('click', () => setZoomLabel(canvas.setZoom(canvas.getZoom() - 0.1)));
+  $('zoom-reset-btn').addEventListener('click', () => setZoomLabel(canvas.resetZoom()));
+  $('select-all-btn').addEventListener('click', () => canvas.selectAll());
+  $('clear-sel-btn').addEventListener('click', () => canvas.clearSelection());
   $('merge-btn').addEventListener('click', () => mergeItems(canvas.getSelected(), canvas));
   $('open-folder-btn').addEventListener('click', () => {
     if (canvas.folderPath) window.godiv.openFolder(canvas.folderPath);

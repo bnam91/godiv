@@ -4,7 +4,7 @@ import { dirname, join } from 'path';
 import { readFileSync } from 'fs';
 import { loadSettings, saveSettings, DEFAULT_SAVE_ROOT } from './config.js';
 import { downloadDetail, naverKeywordSearch, closeBrowser } from './electron/services/browserService.js';
-import { listImages, saveImage, readImageAsDataUrl } from './electron/services/imageStore.js';
+import { listImages, saveImage, readImageAsDataUrl, deleteImage } from './electron/services/imageStore.js';
 import { detectPlatform } from './electron/services/platform.js';
 import { checkForUpdates } from './electron/services/updateService.js';
 
@@ -41,11 +41,17 @@ function createWindow() {
   if (process.platform === 'win32') mainWindow.setMenuBarVisibility(false);
   mainWindow.loadFile(join(__dirname, 'renderer/index.html'));
 
-  // 창 크기 변경 persist
+  // 창 크기 변경 persist (디바운스 — 드래그 중 매 픽셀 디스크 write 방지)
+  let resizeTimer = null;
   mainWindow.on('resize', () => {
     if (!mainWindow) return;
-    const [width, height] = mainWindow.getSize();
-    saveSettings({ window: { width, height } });
+    if (resizeTimer) clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      resizeTimer = null;
+      if (!mainWindow) return;
+      const [width, height] = mainWindow.getSize();
+      saveSettings({ window: { width, height } });
+    }, 400);
   });
 
   // 자동 업데이트 체크 (앱 시작 3초 후)
@@ -151,6 +157,16 @@ app.whenReady().then(() => {
     try {
       const savedPath = await saveImage(folderPath, fileName, dataUrl);
       return { success: true, path: savedPath };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  // 개별 이미지 삭제
+  ipcMain.handle('delete-image', async (e, { folderPath, fileName }) => {
+    try {
+      const removed = await deleteImage(folderPath, fileName);
+      return { success: true, path: removed };
     } catch (err) {
       return { success: false, error: err.message };
     }

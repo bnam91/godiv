@@ -174,10 +174,27 @@ input[readonly] { color: var(--text-dim); }
 .canvas-scroll { flex: 1; overflow: auto; background: #0f1116; padding: 24px; }
 .canvas-stage { margin: 0 auto; display: flex; flex-direction: column; align-items: center; gap: 12px; transform-origin: top center; }
 
-/* 캔버스 아이템 (항목9~12 에이전트가 확장) */
+/* 캔버스 아이템 */
 .canvas-item { position: relative; border: 2px solid transparent; border-radius: 4px; }
-.canvas-item.selected { border-color: var(--accent); }
+.canvas-item.selected { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(76,141,255,0.25); }
 .canvas-item img { display: block; max-width: 680px; }
+.canvas-item.slice-mode { cursor: crosshair; }
+
+/* 아이템 툴버튼 (✂ / GIF / ✕) — hover 시 또렷하게 */
+.item-tools { position: absolute; top: 6px; right: 6px; display: flex; gap: 6px; opacity: 0.55; transition: opacity 0.15s; }
+.canvas-item:hover .item-tools { opacity: 1; }
+.item-tools .btn { background: rgba(20,22,28,0.85); }
+.item-tools .del-btn:hover { border-color: var(--danger); color: var(--danger); }
+
+/* 빈 캔버스 안내 */
+.canvas-empty-guide { text-align: center; color: var(--text-dim); padding: 80px 20px; user-select: none; }
+.canvas-empty-guide .ceg-icon { font-size: 44px; opacity: 0.5; margin-bottom: 14px; }
+.canvas-empty-guide .ceg-title { font-size: 15px; color: var(--text); margin-bottom: 8px; }
+.canvas-empty-guide .ceg-sub { font-size: 12px; line-height: 1.7; }
+
+/* 업로드 스텁 버튼 (아직 미구현임을 시각적으로) */
+.upload-stubs .stub { opacity: 0.7; }
+.upload-stubs .soon { font-size: 10px; padding: 1px 5px; border-radius: 999px; background: #3a2f12; color: #ffcf6b; margin-left: 4px; }
 
 /* 토스트 */
 .toast {

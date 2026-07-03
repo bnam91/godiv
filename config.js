@@ -4,7 +4,7 @@ import { app } from 'electron';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { homedir } from 'os';
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -40,8 +40,17 @@ export function loadSettings() {
 export function saveSettings(patch) {
   try {
     const current = loadSettings();
-    const next = { ...current, ...patch };
-    writeFileSync(settingsPath(), JSON.stringify(next, null, 2), 'utf-8');
+    // window는 얕은 병합 시 부분 patch(예: width만)가 height를 날림 → deep-merge
+    const next = {
+      ...current,
+      ...patch,
+      window: { ...current.window, ...(patch?.window || {}) },
+    };
+    // 원자적 저장: tmp에 쓰고 rename (쓰기 중 크래시로 인한 truncate 방지)
+    const p = settingsPath();
+    const tmp = `${p}.tmp`;
+    writeFileSync(tmp, JSON.stringify(next, null, 2), 'utf-8');
+    renameSync(tmp, p);
     return next;
   } catch (e) {
     console.error('[config] saveSettings 실패:', e.message);

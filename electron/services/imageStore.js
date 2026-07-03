@@ -2,7 +2,7 @@
 // 보안: 렌더러가 넘기는 경로/파일명은 신뢰하지 않는다.
 //  - saveImage(fileName): 경로구분자/절대경로/.. 금지, 결과 경로가 폴더 안인지 확인
 //  - readImageAsDataUrl(path): 허용된 루트(다운로드/로드한 폴더) 하위만 읽기 허용
-import { readdir, readFile, writeFile, mkdir } from 'fs/promises';
+import { readdir, readFile, writeFile, mkdir, unlink } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join, extname, resolve, basename, sep } from 'path';
 
@@ -91,5 +91,19 @@ export async function saveImage(folderPath, fileName, dataUrl) {
   if (!m) throw new Error('유효하지 않은 dataURL');
   const buf = Buffer.from(m[2], 'base64');
   await writeFile(dest, buf);
+  return dest;
+}
+
+// 이미지 파일 삭제 (캔버스 개별 삭제). 허용 루트 하위 + 이미지 확장자 + 안전 파일명만.
+export async function deleteImage(folderPath, fileName) {
+  if (!folderPath) throw new Error('folderPath 없음');
+  const safeName = assertSafeFileName(fileName);
+  const root = resolve(folderPath);
+  if (!isUnderAllowedRoot(root)) throw new Error('허용되지 않은 폴더입니다');
+  const dest = resolve(root, safeName);
+  if (!(dest === root || dest.startsWith(root + sep))) throw new Error('경로가 폴더를 벗어납니다');
+  if (extname(dest).toLowerCase() && !IMAGE_EXTS.has(extname(dest).toLowerCase()))
+    throw new Error('이미지 파일이 아닙니다');
+  await unlink(dest);
   return dest;
 }

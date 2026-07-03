@@ -58,8 +58,8 @@
       </div>
 
       <div class="upload-stubs">
-        <button id="to-goditor-btn" class="btn btn-ghost" title="MCP 연동 예정">고디터에 올리기</button>
-        <button id="to-figma-btn" class="btn btn-ghost" title="MCP 연동 예정">피그마에 올리기</button>
+        <button id="to-goditor-btn" class="btn btn-ghost stub" title="MCP 연동 예정 (v2)">고디터에 올리기 <span class="soon">예정</span></button>
+        <button id="to-figma-btn" class="btn btn-ghost stub" title="MCP 연동 예정 (v2)">피그마에 올리기 <span class="soon">예정</span></button>
       </div>
     </section>
 
@@ -69,9 +69,11 @@
         <span id="canvas-folder-label" class="folder-label">다운로드하면 이미지가 여기 나타납니다</span>
         <div class="canvas-tools">
           <button id="zoom-out-btn" class="btn btn-icon" title="축소">−</button>
-          <span id="zoom-level" class="zoom-level">100%</span>
+          <button id="zoom-reset-btn" class="btn btn-icon" title="100%로 되돌리기"><span id="zoom-level" class="zoom-level">100%</span></button>
           <button id="zoom-in-btn" class="btn btn-icon" title="확대">+</button>
-          <button id="merge-btn" class="btn btn-sub" disabled>선택 합치기</button>
+          <button id="select-all-btn" class="btn btn-sub" title="전체 선택">전체선택</button>
+          <button id="clear-sel-btn" class="btn btn-sub" title="선택 해제">선택해제</button>
+          <button id="merge-btn" class="btn btn-sub" title="이미지 2장 이상 선택하면 세로로 이어붙입니다" disabled>선택 합치기</button>
           <button id="open-folder-btn" class="btn btn-sub">폴더 열기</button>
         </div>
       </div>

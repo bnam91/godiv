@@ -86,10 +86,12 @@ export async function openGifViewer(item, controller) {
         window.__godivToast?.(`프레임 저장 실패: ${res.error}`);
         return;
       }
-      item.gifFrameDataUrl = dataUrl; // merge에서 정지 이미지로 재사용
+      item.gifFrameDataUrl = dataUrl; // 현재 item에 즉시 반영
+      // reload 후에도 유지되도록 컨트롤러의 이름→프레임 맵에 등록(합치기에서 정지 이미지로 재사용)
+      controller.setGifFrame?.(item.name, dataUrl);
       close();
       await controller.reload();
-      window.__godivToast?.(`프레임 저장 완료 → ${fileName}`);
+      window.__godivToast?.(`프레임 저장 완료 → ${fileName} (합치기 시 이 프레임 사용)`);
     } catch (err) {
       window.__godivToast?.(`프레임 저장 실패: ${err.message}`);
     }

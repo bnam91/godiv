@@ -24,6 +24,7 @@ function registerIpc() {
   ipcMain.handle('list-folder-images', async (e, fp) => { try { return { success: true, images: await listImages(fp) }; } catch (err) { return { success: false, error: err.message }; } });
   ipcMain.handle('read-image-dataurl', async (e, fp) => { try { return { success: true, dataUrl: await readImageAsDataUrl(fp) }; } catch (err) { return { success: false, error: err.message }; } });
   ipcMain.handle('save-image', async (e, { folderPath, fileName, dataUrl }) => { try { return { success: true, path: await saveImage(folderPath, fileName, dataUrl) }; } catch (err) { return { success: false, error: err.message }; } });
+  ipcMain.handle('delete-image', async (e, { folderPath, fileName }) => { try { const { deleteImage } = await import('../electron/services/imageStore.js'); return { success: true, path: await deleteImage(folderPath, fileName) }; } catch (err) { return { success: false, error: err.message }; } });
   ipcMain.handle('select-folder', async () => process.env.GODIV_MOCK_PICK || null); // 다이얼로그 목킹
   ipcMain.handle('open-folder', async () => ({ success: true }));
   ipcMain.handle('open-external', async () => ({ success: true }));

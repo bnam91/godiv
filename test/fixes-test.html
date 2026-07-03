@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="ko"><head><meta charset="UTF-8"><title>godiv fixes test</title></head>
+<body>
+  <div id="canvas-scroll"><div id="canvas-stage"></div></div>
+  <span id="canvas-folder-label"></span><div id="toast"></div>
+  <div id="gif-modal" class="hidden">
+    <div id="gif-frame-preview"></div>
+    <input id="gif-frame-slider" type="range" min="0" max="0" value="0" />
+    <span id="gif-frame-label"></span><button id="gif-export-btn"></button><button id="gif-close"></button>
+  </div>
+  <script type="module">
+    import { createCanvasController } from '../renderer/js/canvas.js';
+    import { mergeItems } from '../renderer/js/merge.js';
+    import { openGifViewer, isGifItem } from '../renderer/js/gif.js';
+    window.__godivToast = (m) => { window.__lastToast = m; console.log('[toast]', m); };
+
+    // 큰 이미지 dataURL 생성기 (합치기 65k 분할 검증용)
+    function bigImageDataUrl(w, h) {
+      const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+      const ctx = cv.getContext('2d'); ctx.fillStyle = '#345'; ctx.fillRect(0,0,w,h);
+      return cv.toDataURL('image/png');
+    }
+
+    window.runFixTests = async (folderPath) => {
+      const R = {};
+      const controller = createCanvasController({
+        stageEl: document.getElementById('canvas-stage'),
+        scrollEl: document.getElementById('canvas-scroll'),
+        folderLabelEl: document.getElementById('canvas-folder-label'),
+        onSelectionChange: () => {},
+      });
+      await controller.loadFolder(folderPath);
+
+      // ── 버그2 검증: GIF 선택프레임이 reload 후에도 유지되어 합치기에 반영되나 ──
+      const gifItem = controller.items.find(i => isGifItem(i));
+      await openGifViewer(gifItem, controller);
+      const slider = document.getElementById('gif-frame-slider');
+      slider.value = String(Math.floor((Number(slider.max)) * 0.8)); // 후반 프레임
+      slider.dispatchEvent(new Event('input'));
+      await new Promise(r => setTimeout(r, 250));
+      document.getElementById('gif-export-btn').click();
+      await new Promise(r => setTimeout(r, 700));
+      // reload 후 같은 gif 아이템에 gifFrameDataUrl 복원됐는지
+      const gifAfter = controller.items.find(i => i.name === gifItem.name);
+      R.gifFramePreserved = !!(gifAfter && gifAfter.gifFrameDataUrl);
+
+      // ── 버그3 검증: 삭제 기능 ──
+      const before = controller.items.length;
+      const delTarget = controller.items.find(i => i.name.endsWith('_frame' ) || i.name.includes('_frame'));
+      // 방금 export된 프레임 파일 삭제
+      const frameItem = controller.items.find(i => /_frame\d+\.png$/.test(i.name));
+      if (frameItem) { await controller.deleteItem(frameItem); }
+      R.deleteWorked = controller.items.length === before - (frameItem ? 1 : 0);
+      R.afterDelete = controller.items.map(i => i.name);
+
+      return R;
+    };
+
+    // 65k 분할은 별도 시나리오(순수 큰 이미지)로
+    window.run65kTest = async (folderPath) => {
+      const R = {};
+      const controller = createCanvasController({
+        stageEl: document.getElementById('canvas-stage'),
+        scrollEl: document.getElementById('canvas-scroll'),
+        folderLabelEl: document.getElementById('canvas-folder-label'),
+        onSelectionChange: () => {},
+      });
+      await controller.loadFolder(folderPath);
+      // 폴더에 큰 이미지 여러 장이 있다고 가정하고 전부 선택 후 합치기
+      const all = controller.items;
+      all.forEach(i => i.selected = true);
+      await mergeItems(all, controller);
+      await new Promise(r => setTimeout(r, 800));
+      R.toast = window.__lastToast;
+      await controller.loadFolder(folderPath);
+      R.mergedFiles = controller.items.filter(i => i.name.startsWith('merged_')).map(i => i.name);
+      return R;
+    };
+  </script>
+</body></html>

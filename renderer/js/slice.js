@@ -33,6 +33,7 @@ async function sliceHorizontal(src, ratio) {
   const img = await loadImage(src);
   const W = img.naturalWidth;
   const H = img.naturalHeight;
+  if (!W || H < 2) throw new Error('너무 작아 자를 수 없는 이미지입니다');
   const cutY = clamp(Math.round(H * ratio), 1, H - 1);
   const mk = (sy, sh) => {
     const cv = document.createElement('canvas');
@@ -41,7 +42,13 @@ async function sliceHorizontal(src, ratio) {
     cv.getContext('2d').drawImage(img, 0, sy, W, sh, 0, 0, W, sh);
     return cv.toDataURL('image/png');
   };
-  return { top: mk(0, cutY), bottom: mk(cutY, H - cutY) };
+  const top = mk(0, cutY);
+  const bottom = mk(cutY, H - cutY);
+  // 두 조각 모두 유효한 PNG dataURL이어야 저장(고아 파일 방지)
+  if (!top || top.length < 32 || !bottom || bottom.length < 32) {
+    throw new Error('조각 생성 실패');
+  }
+  return { top, bottom };
 }
 
 export function enableSlice(item, controller) {

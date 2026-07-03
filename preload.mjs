@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld('godiv', {
   listFolderImages: (folderPath) => ipcRenderer.invoke('list-folder-images', folderPath),
   readImageDataUrl: (filePath) => ipcRenderer.invoke('read-image-dataurl', filePath),
   saveImage: (payload) => ipcRenderer.invoke('save-image', payload),
+  deleteImage: (payload) => ipcRenderer.invoke('delete-image', payload),
 
   // 업데이트
   checkUpdates: () => ipcRenderer.invoke('check-updates'),
