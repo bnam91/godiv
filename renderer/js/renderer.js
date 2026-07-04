@@ -94,7 +94,7 @@ async function init() {
   let canvasCollapsed = settings.canvasCollapsed !== false;
   const applyCanvasCollapsed = (persist) => {
     layoutEl.classList.toggle('canvas-collapsed', canvasCollapsed);
-    $('canvas-toggle').textContent = canvasCollapsed ? '🖼 캔버스 펼치기' : '🖼 캔버스 접기';
+    $('canvas-toggle').textContent = canvasCollapsed ? '캔버스 펼치기' : '캔버스 접기';
     if (persist) window.godiv.setCanvasCollapsed(canvasCollapsed);
   };
   $('canvas-toggle').addEventListener('click', () => {
