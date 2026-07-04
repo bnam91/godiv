@@ -76,6 +76,12 @@ body {
 }
 .panel-right { flex: 1; min-width: 0; }
 
+/* 캔버스 접힘: 우패널 숨기고 좌패널이 전체 폭 */
+.layout.canvas-collapsed .panel-right { display: none; }
+.layout.canvas-collapsed .panel-left { width: 100%; border-right: none; }
+
+.canvas-toggle { font-size: 12px; padding: 6px 10px; }
+
 /* 필드 */
 .field { display: flex; flex-direction: column; gap: 6px; }
 .field > label, .field-inline > label { font-size: 12px; color: var(--text-dim); }

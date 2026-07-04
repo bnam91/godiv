@@ -15,6 +15,9 @@ const packageJson = JSON.parse(readFileSync(join(__dirname, 'package.json'), 'ut
 const isDev = process.env.NODE_ENV === 'development';
 
 let mainWindow;
+const COMPACT_WIDTH = 412;                 // 캔버스 접힘 시 창 폭(좌패널만)
+// 캔버스 접힘 상태(기본 접힘). resize persist가 접힘/펼침 폭을 구분하는 데 사용.
+let canvasCollapsed = loadSettings().canvasCollapsed !== false;
 
 console.log('\n========================================');
 console.log(`📦 godiv v${packageJson.version}  (${process.platform}/${process.arch})`);
@@ -23,9 +26,10 @@ console.log('========================================\n');
 function createWindow() {
   const settings = loadSettings();
   mainWindow = new BrowserWindow({
-    width: settings.window?.width || 1180,
+    // 캔버스 접힘(기본)이면 좌패널만 보이는 컴팩트 폭으로 시작
+    width: canvasCollapsed ? COMPACT_WIDTH : (settings.window?.width || 1180),
     height: settings.window?.height || 900,
-    minWidth: 900,
+    minWidth: 412,   // 컴팩트(좌패널 380+여백) 허용
     minHeight: 640,
     title: `godiv v${packageJson.version}`,
     autoHideMenuBar: true,
@@ -41,7 +45,7 @@ function createWindow() {
   if (process.platform === 'win32') mainWindow.setMenuBarVisibility(false);
   mainWindow.loadFile(join(__dirname, 'renderer/index.html'));
 
-  // 창 크기 변경 persist (디바운스 — 드래그 중 매 픽셀 디스크 write 방지)
+  // 창 크기 변경 persist (디바운스). 캔버스 펼침 상태의 폭만 저장(접힘 컴팩트폭은 저장 안 함).
   let resizeTimer = null;
   mainWindow.on('resize', () => {
     if (!mainWindow) return;
@@ -50,7 +54,8 @@ function createWindow() {
       resizeTimer = null;
       if (!mainWindow) return;
       const [width, height] = mainWindow.getSize();
-      saveSettings({ window: { width, height } });
+      if (canvasCollapsed) saveSettings({ window: { height } });
+      else saveSettings({ window: { width, height } });
     }, 400);
   });
 
@@ -81,6 +86,23 @@ app.whenReady().then(() => {
 
   ipcMain.handle('get-settings', () => loadSettings());
   ipcMain.handle('save-settings', (e, patch) => saveSettings(patch));
+
+  // 캔버스 패널 접기/펼치기 → 창 폭 조절 + 상태 persist
+  ipcMain.handle('set-canvas-collapsed', (e, collapsed) => {
+    canvasCollapsed = !!collapsed;
+    saveSettings({ canvasCollapsed });
+    if (mainWindow) {
+      const [, h] = mainWindow.getSize();
+      if (canvasCollapsed) {
+        mainWindow.setSize(COMPACT_WIDTH, h);
+      } else {
+        const s = loadSettings();
+        const w = s.window?.width && s.window.width > 500 ? s.window.width : 1180;
+        mainWindow.setSize(w, h);
+      }
+    }
+    return { success: true, canvasCollapsed };
+  });
 
   // 크롤 모드 토글 (launch=전용프로필 새로띄움 / cdp=실제 로그인 크롬에 attach)
   ipcMain.handle('set-crawl-mode', (e, opts) => {

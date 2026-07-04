@@ -89,6 +89,20 @@ async function init() {
   $('to-goditor-btn').addEventListener('click', () => toast('고디터 업로드 — MCP 연동 예정 (v2)'));
   $('to-figma-btn').addEventListener('click', () => toast('피그마 업로드 — MCP 연동 예정 (v2)'));
 
+  // 캔버스 패널 접기/펼치기 (기본 접힘 — 다운로드가 주, 편집은 필요할 때)
+  const layoutEl = document.querySelector('.layout');
+  let canvasCollapsed = settings.canvasCollapsed !== false;
+  const applyCanvasCollapsed = (persist) => {
+    layoutEl.classList.toggle('canvas-collapsed', canvasCollapsed);
+    $('canvas-toggle').textContent = canvasCollapsed ? '🖼 캔버스 펼치기' : '🖼 캔버스 접기';
+    if (persist) window.godiv.setCanvasCollapsed(canvasCollapsed);
+  };
+  $('canvas-toggle').addEventListener('click', () => {
+    canvasCollapsed = !canvasCollapsed;
+    applyCanvasCollapsed(true);
+  });
+  applyCanvasCollapsed(false); // 초기 상태 반영(창 폭은 main이 시작 시 이미 컴팩트로 설정)
+
   // CDP 모드 토글 (봇차단 우회 — 로그인된 실제 크롬에 attach)
   if (settings.crawl?.mode === 'cdp') { $('cdp-toggle').checked = true; $('cdp-port').value = settings.crawl.cdpPort || ''; }
   const applyCrawlMode = () => {
@@ -151,6 +165,8 @@ async function onDownload() {
     setProgress(100);
     await window.godiv.saveSettings({ lastFolderName: res.folderName || folderName });
     await canvas.loadFolder(res.folderPath);
+    // 다운로드 결과를 바로 보도록 캔버스가 접혀 있으면 자동 펼침
+    if (document.querySelector('.layout').classList.contains('canvas-collapsed')) $('canvas-toggle').click();
     toast(`${res.count}개 이미지 다운로드 완료`);
   } catch (err) {
     log(`오류: ${err.message}`);

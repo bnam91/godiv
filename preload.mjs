@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('godiv', {
   getSettings: () => ipcRenderer.invoke('get-settings'),
   saveSettings: (patch) => ipcRenderer.invoke('save-settings', patch),
   setCrawlMode: (opts) => ipcRenderer.invoke('set-crawl-mode', opts),
+  setCanvasCollapsed: (collapsed) => ipcRenderer.invoke('set-canvas-collapsed', collapsed),
 
   // 폴더 / 외부링크
   selectFolder: () => ipcRenderer.invoke('select-folder'),

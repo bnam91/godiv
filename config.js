@@ -22,6 +22,7 @@ function settingsPath() {
 const DEFAULTS = {
   saveRoot: DEFAULT_SAVE_ROOT,
   lastFolderName: '',
+  canvasCollapsed: true, // 캔버스 패널 기본 접힘(다운로드가 주, 편집은 필요할 때 펼침)
   window: { width: 1180, height: 900 },
 };
 
