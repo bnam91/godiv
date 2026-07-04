@@ -127,6 +127,21 @@ app.whenReady().then(() => {
     return !result.canceled && result.filePaths.length > 0 ? result.filePaths[0] : null;
   });
 
+  // 드래그앤드롭된 경로들 → 로드할 폴더 결정(폴더면 자신, 파일이면 상위 폴더)
+  ipcMain.handle('resolve-drop-target', async (e, paths) => {
+    try {
+      const { stat } = await import('fs/promises');
+      const list = (paths || []).filter(Boolean);
+      if (!list.length) return { folder: null };
+      for (const p of list) {
+        try { if ((await stat(p)).isDirectory()) return { folder: p }; } catch {}
+      }
+      return { folder: dirname(list[0]) };
+    } catch (err) {
+      return { folder: null, error: err.message };
+    }
+  });
+
   ipcMain.handle('open-folder', async (e, folderPath) => {
     try {
       if (!folderPath) throw new Error('폴더 경로가 없습니다.');

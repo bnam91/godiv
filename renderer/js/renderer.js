@@ -85,6 +85,30 @@ async function init() {
     if (canvas.folderPath) window.godiv.openFolder(canvas.folderPath);
   });
 
+  // 캔버스 드래그앤드롭 — 폴더/이미지를 끌어다 놓으면 로드
+  const dropArea = $('canvas-scroll');
+  const setDragHint = (on) => {
+    dropArea.classList.toggle('drag-over', on);
+    document.querySelector('.canvas-empty-guide')?.classList.toggle('drag-hint', on);
+  };
+  ['dragenter', 'dragover'].forEach((ev) =>
+    dropArea.addEventListener(ev, (e) => { e.preventDefault(); e.stopPropagation(); setDragHint(true); })
+  );
+  dropArea.addEventListener('dragleave', (e) => {
+    if (e.target === dropArea) setDragHint(false);
+  });
+  dropArea.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragHint(false);
+    const paths = [...(e.dataTransfer?.files || [])].map((f) => f.path).filter(Boolean);
+    if (!paths.length) return toast('이미지 파일이나 폴더를 놓아주세요');
+    const res = await window.godiv.resolveDropTarget(paths);
+    if (!res?.folder) return toast('불러올 폴더를 찾지 못했습니다');
+    await canvas.loadFolder(res.folder);
+    toast(`불러옴 → ${res.folder.split('/').pop()}`);
+  });
+
   // 업로드 스텁
   $('to-goditor-btn').addEventListener('click', () => toast('고디터 업로드 — MCP 연동 예정 (v2)'));
   $('to-figma-btn').addEventListener('click', () => toast('피그마 업로드 — MCP 연동 예정 (v2)'));

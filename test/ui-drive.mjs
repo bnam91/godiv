@@ -25,6 +25,17 @@ function registerIpc() {
   ipcMain.handle('read-image-dataurl', async (e, fp) => { try { return { success: true, dataUrl: await readImageAsDataUrl(fp) }; } catch (err) { return { success: false, error: err.message }; } });
   ipcMain.handle('save-image', async (e, { folderPath, fileName, dataUrl }) => { try { return { success: true, path: await saveImage(folderPath, fileName, dataUrl) }; } catch (err) { return { success: false, error: err.message }; } });
   ipcMain.handle('delete-image', async (e, { folderPath, fileName }) => { try { const { deleteImage } = await import('../electron/services/imageStore.js'); return { success: true, path: await deleteImage(folderPath, fileName) }; } catch (err) { return { success: false, error: err.message }; } });
+  ipcMain.handle('resolve-drop-target', async (e, paths) => {
+    try {
+      const { stat } = await import('fs/promises');
+      const { dirname } = await import('path');
+      const list = (paths || []).filter(Boolean);
+      if (!list.length) return { folder: null };
+      for (const p of list) { try { if ((await stat(p)).isDirectory()) return { folder: p }; } catch {} }
+      return { folder: dirname(list[0]) };
+    } catch (err) { return { folder: null, error: err.message }; }
+  });
+  ipcMain.handle('set-canvas-collapsed', async () => ({ success: true }));
   ipcMain.handle('select-folder', async () => process.env.GODIV_MOCK_PICK || null); // 다이얼로그 목킹
   ipcMain.handle('open-folder', async () => ({ success: true }));
   ipcMain.handle('open-external', async () => ({ success: true }));

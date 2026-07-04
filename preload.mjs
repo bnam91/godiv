@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('godiv', {
   setCanvasCollapsed: (collapsed) => ipcRenderer.invoke('set-canvas-collapsed', collapsed),
 
   // 폴더 / 외부링크
+  resolveDropTarget: (paths) => ipcRenderer.invoke('resolve-drop-target', paths),
   selectFolder: () => ipcRenderer.invoke('select-folder'),
   openFolder: (p) => ipcRenderer.invoke('open-folder', p),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),

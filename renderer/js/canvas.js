@@ -30,7 +30,7 @@ export function createCanvasController({ stageEl, scrollEl, folderLabelEl, onSel
           '<div class="ceg-icon">🖼️</div>' +
           '<div class="ceg-title">아직 불러온 이미지가 없어요</div>' +
           '<div class="ceg-sub">URL을 붙여넣고 <b>상세페이지 다운로드</b>를 누르거나,<br>' +
-          '이미 받은 폴더는 <b>폴더 열기</b> 옆에서 불러올 수 있어요.</div>';
+          '이미 받은 <b>폴더·이미지를 여기로 끌어다 놓으세요.</b></div>';
         stageEl.appendChild(guide);
       }
     } else if (guide) {
