@@ -107,7 +107,10 @@ export function createCanvasController({ stageEl, scrollEl, folderLabelEl, onSel
       folderPath = fp;
       stageEl.innerHTML = '';
       items = [];
-      folderLabelEl.textContent = fp;
+      // 좁은 창에서도 정보가치 유지 — 폴더명(basename) 표시 + 전체경로는 툴팁
+      const base = String(fp).replace(/\/+$/, '').split('/').pop() || fp;
+      folderLabelEl.textContent = base;
+      folderLabelEl.title = fp;
       const res = await window.godiv.listFolderImages(fp);
       if (token !== loadToken) return; // 더 새로운 로드가 시작됨 → 폐기
       if (!res.success) { folderLabelEl.textContent = `로드 실패: ${res.error}`; updateEmptyGuide(); return; }
@@ -155,5 +158,6 @@ export function createCanvasController({ stageEl, scrollEl, folderLabelEl, onSel
     emitSelection,
   };
 
+  updateEmptyGuide(); // 첫 실행 시 빈 캔버스 안내 즉시 표시
   return controller;
 }

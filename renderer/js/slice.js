@@ -61,7 +61,7 @@ export function enableSlice(item, controller) {
   const line = document.createElement('div');
   line.className = 'slice-line';
   line.style.cssText =
-    'position:absolute;left:0;right:0;top:50%;height:0;border-top:2px dashed #ff375f;' +
+    'position:absolute;left:0;right:0;top:50%;height:0;border-top:2px dashed var(--slice-line, #ff375f);' +
     'box-shadow:0 0 0 9999px rgba(0,0,0,0);pointer-events:none;z-index:50;';
   el.appendChild(line);
 
